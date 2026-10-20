@@ -147,6 +147,9 @@ function Editor() {
       try {
         const decoded = await audio.decodeAudioData(await file.arrayBuffer());
         fd.append("seconds", String(decoded.duration));
+      } catch {
+        // Some video containers cannot be decoded here; zero means unknown, not free usage.
+        fd.append("seconds", "0");
       } finally {
         await audio.close();
       }
