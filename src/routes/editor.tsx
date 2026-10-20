@@ -189,6 +189,7 @@ function Editor() {
         />
 
         {!original ? (
+          <>
           <button
             onClick={() => input.current?.click()}
             className="mt-8 flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed bg-card p-16 text-muted-foreground hover:border-primary hover:text-foreground"
@@ -198,6 +199,7 @@ function Editor() {
             <span className="text-sm">Audio or video, up to 25 MB</span>
           </button>
           <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">or {recButton}</div>
+          </>
         ) : (
           <>
           {file && (
