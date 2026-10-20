@@ -14,7 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      clips: {
+        Row: {
+          created_at: string
+          id: string
+          script_id: string | null
+          storage_path: string
+          text: string
+          user_id: string
+          voice: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          script_id?: string | null
+          storage_path: string
+          text: string
+          user_id?: string
+          voice: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          script_id?: string | null
+          storage_path?: string
+          text?: string
+          user_id?: string
+          voice?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clips_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scripts: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
