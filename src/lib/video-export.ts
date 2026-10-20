@@ -17,6 +17,19 @@ function drawCover(ctx: CanvasRenderingContext2D, src: CanvasImageSource, sw: nu
   ctx.drawImage(src, (W - w) / 2, (H - h) / 2, w, h);
 }
 
+/** MP4 (H.264 + AAC) plays on every phone and editor; fall back to WebM only where the browser can't record MP4. */
+export function pickVideoMime() {
+  const order = [
+    "video/mp4;codecs=avc1.640028,mp4a.40.2",
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1,mp4a",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm",
+  ];
+  return order.find((t) => MediaRecorder.isTypeSupported(t)) ?? "video/webm";
+}
+
 /** Records all scenes, in order, to a single WebM file in real time. No length limit. */
 export async function exportVideo(scenes: RenderScene[], onProgress: (i: number) => void): Promise<Blob> {
   const W = 1280, H = 720;
@@ -27,7 +40,7 @@ export async function exportVideo(scenes: RenderScene[], onProgress: (i: number)
   const ac = new AudioContext();
   const dest = ac.createMediaStreamDestination();
   const stream = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
-  const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" : "video/webm";
+  const mime = pickVideoMime();
   const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 5_000_000 });
   const chunks: Blob[] = [];
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
@@ -80,7 +93,7 @@ export async function exportVideo(scenes: RenderScene[], onProgress: (i: number)
   rec.stop();
   await done;
   await ac.close();
-  return new Blob(chunks, { type: "video/webm" });
+  return new Blob(chunks, { type: mime.split(";")[0] ?? "video/webm" });
 }
 
 export function audioSeconds(src: string) {

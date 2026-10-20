@@ -129,7 +129,7 @@ function VideoStudio() {
         scenes.map((s) => ({ image: s.image, video: s.video, audio: s.audio, seconds: s.seconds ?? 5 })),
         (i) => setExporting(`Recording scene ${i + 1} of ${scenes.length}… keep this tab open`),
       );
-      download(URL.createObjectURL(blob), "vocalis-video.webm");
+      download(URL.createObjectURL(blob), `vocalis-video.${blob.type.includes("mp4") ? "mp4" : "webm"}`);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
