@@ -11,3 +11,7 @@ Verification limits: live ElevenLabs cloning and MP3 generation were not exercis
 - [x] Run regression tests and verify authenticated usage recording and blocked requests.
 
 Usage verification: authenticated stock speech recorded 50 TTS characters and saved its clip, visible in My Library. Limit boundary and provider blocking are covered by regression tests; live saturation with 60 requests was not performed. Duration units are estimates; zero represents unknown duration. Provider failures also count, and timing fallbacks reserve separate calls.
+
+- [ ] Add changed-word patches with context, matching, highlights and individual undo.
+- [ ] Add sentence takes, delivery controls, chosen-take export and saved-script persistence.
+- [ ] Test audio maths, limits and authenticated editor/studio workflows.
