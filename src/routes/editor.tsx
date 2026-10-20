@@ -143,6 +143,13 @@ function Editor() {
     try {
       const fd = new FormData();
       fd.append("file", file);
+      const audio = new AudioContext();
+      try {
+        const decoded = await audio.decodeAudioData(await file.arrayBuffer());
+        fd.append("seconds", String(decoded.duration));
+      } finally {
+        await audio.close();
+      }
       const r = await transcribe({ data: fd });
       setTranscript(r.text);
       setText(r.text);

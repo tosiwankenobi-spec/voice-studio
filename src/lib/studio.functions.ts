@@ -1,6 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { requireVoiceConsent } from "@/lib/studio-validation";
+import { recordAIUsage, UsageLimitError } from "@/lib/usage";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 
 const GATEWAY = "https://ai.gateway.lovable.dev";
 const TTS_MODEL = "google/gemini-3.1-flash-tts-preview";
@@ -35,8 +38,9 @@ export const generateSpeech = createServerFn({ method: "POST" })
     const voice = (VOICES as readonly string[]).includes(d.voice) ? d.voice : "Kore";
     return { text, voice, style: String(d.style ?? "").slice(0, 200) };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const spoken = data.style ? `${data.style}: ${data.text}` : data.text;
+    await recordAIUsage(context, "tts", spoken.length);
     const res = await fetch(`${GATEWAY}/v1/audio/speech`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
@@ -64,7 +68,8 @@ export const askClaude = createServerFn({ method: "POST" })
     if (!instruction) throw new Error("Tell Claude what to do.");
     return { text: String(d.text ?? "").slice(0, 8000), instruction: instruction.slice(0, 1000) };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await recordAIUsage(context, "claude", 1);
     const res = await fetch(`${GATEWAY}/v1/messages`, {
       method: "POST",
       headers: {
@@ -126,9 +131,12 @@ export const transcribeRecording = createServerFn({ method: "POST" })
     if (file.size > MAX_UPLOAD) throw new Error("Recordings must be under 25 MB.");
     if (!file.type.startsWith("audio/") && !file.type.startsWith("video/"))
       throw new Error("That file isn't audio or video.");
-    return { file };
+    const seconds = Number(d.get("seconds") ?? 0);
+    if (!Number.isFinite(seconds) || seconds < 0 || seconds > 2147483647) throw new Error("Invalid recording duration.");
+    return { file, seconds };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await recordAIUsage(context, "transcription", data.seconds);
     const form = new FormData();
     form.append("model", "openai/gpt-transcribe");
     form.append("file", data.file, data.file.name);
@@ -139,7 +147,8 @@ export const transcribeRecording = createServerFn({ method: "POST" })
         headers: { Authorization: `Bearer ${key()}` },
         body: form,
       }),
-      wordTimings(data.file).catch((e) => {
+      wordTimings(data.file, context, data.seconds).catch((e) => {
+        if (e instanceof UsageLimitError) throw e;
         console.error("word timings failed", e);
         return [] as TimedWord[];
       }),
@@ -168,12 +177,13 @@ function cleanWords(list: unknown): TimedWord[] {
 }
 
 /** Times every spoken word. Uses ElevenLabs when the account has credits, otherwise an AI model. */
-async function wordTimings(file: File): Promise<TimedWord[]> {
+async function wordTimings(file: File, context: { supabase: SupabaseClient<Database>; userId: string }, seconds: number): Promise<TimedWord[]> {
   const eleven = process.env["ELEVENLABS_API_KEY"];
   if (eleven) {
     const fd = new FormData();
     fd.append("file", file, file.name);
     fd.append("model_id", "scribe_v2");
+    await recordAIUsage(context, "word_timings_elevenlabs", seconds);
     const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": eleven }, body: fd });
     if (r.ok) {
       const j = (await r.json()) as { words?: { text: string; start: number; end: number; type?: string }[] };
@@ -186,6 +196,7 @@ async function wordTimings(file: File): Promise<TimedWord[]> {
   for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
   const ext = (file.name.split(".").pop() || "").toLowerCase();
   const format = ["wav", "mp3", "m4a", "ogg", "flac", "webm", "aac", "mp4"].includes(ext) ? ext : "mp3";
+  await recordAIUsage(context, "word_timings_ai", seconds);
   const res = await fetch(`${GATEWAY}/v1/chat/completions`, {
     method: "POST",
     headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
@@ -245,6 +256,7 @@ export const cloneMyVoice = createServerFn({ method: "POST" })
     return { file, name: String(d.get("name") ?? "My voice").trim().slice(0, 80) || "My voice" };
   })
   .handler(async ({ data, context }) => {
+    await recordAIUsage(context, "voice_clone", 1);
     const form = new FormData();
     form.append("name", `Vocalis – ${data.file.name}`.slice(0, 100));
     form.append("files", data.file, data.file.name);
@@ -283,6 +295,7 @@ export const speakWithMyVoice = createServerFn({ method: "POST" })
     const { data: owned, error } = await context.supabase.from("voices").select("id")
       .eq("eleven_voice_id", data.voiceId).eq("user_id", context.userId).maybeSingle();
     if (error || !owned) throw new Error("Choose one of your saved voices.");
+    await recordAIUsage(context, "cloned_tts", data.text.length);
     const res = await fetch(`${ELEVEN}/v1/text-to-speech/${data.voiceId}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "xi-api-key": elevenKey(), "Content-Type": "application/json" },

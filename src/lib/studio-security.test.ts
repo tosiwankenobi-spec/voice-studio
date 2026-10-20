@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ signedIn: false, registered: false, insertFails: false }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: "auth" }));
+vi.mock("@/lib/usage", () => ({ recordAIUsage: vi.fn(), UsageLimitError: class extends Error {} }));
 vi.mock("@tanstack/react-start", () => ({
   createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
