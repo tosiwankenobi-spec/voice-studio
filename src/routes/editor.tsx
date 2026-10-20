@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { saveClip } from "@/lib/library";
-import { Timeline } from "@/components/Timeline";
+import { Timeline, type TimelineApi } from "@/components/Timeline";
 import { VoicePreview } from "@/components/VoicePreview";
 import { createVoice, listVoices } from "@/lib/voices";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { Word } from "@/lib/audio";
+import { deletedTimelineWords, type Word } from "@/lib/audio";
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 

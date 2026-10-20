@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Pause, Play, Scissors, Trash2, Undo2, Download, ChevronLeft, ChevronRight, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -33,7 +33,7 @@ function Waveform({ buffer, seg }: { buffer: AudioBuffer; seg: Segment }) {
 
 export type TimelineApi = { timelineWords: () => string[]; cutPlaced: (ks: number[]) => boolean };
 
-export function Timeline({ file, words = [], onSave, apiRef }: { file: File; words?: Word[]; onSave?: ((blob: Blob) => void) | undefined; apiRef?: React.MutableRefObject<TimelineApi | null> }) {
+export function Timeline({ file, words = [], onSave, apiRef }: { file: File; words?: Word[]; onSave?: ((blob: Blob) => void) | undefined; apiRef?: RefObject<TimelineApi | null> }) {
   const ctxRef = useRef<AudioContext | null>(null);
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [segs, setSegs] = useState<Segment[]>([]);
