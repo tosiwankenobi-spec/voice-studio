@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ signedIn: false, registered: false, insertFails: false, ownsVoice: false }));
+const state = vi.hoisted(() => ({ signedIn: false, registered: false, insertFails: false, ownsVoice: false, pronunciations: [] as { term: string; say_as: string }[] }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: "auth" }));
 vi.mock("@/lib/usage", () => ({ recordAIUsage: vi.fn(), UsageLimitError: class extends Error {} }));
 vi.mock("@tanstack/react-start", () => ({
@@ -13,7 +13,7 @@ vi.mock("@tanstack/react-start", () => ({
       inputValidator: (fn: typeof validate) => { validate = fn; return builder; },
       handler: (fn: (args: unknown) => unknown) => async (opts: { data: unknown }) => {
         if (protectedFn && !state.signedIn) throw new Error("Unauthorized");
-        const supabase = { from: () => ({
+        const supabase = { from: (table: string) => table === 'pronunciations' ? { select: () => ({ eq: async () => ({ data: state.pronunciations, error: null }) }) } : ({
           insert: () => ({ select: () => ({ single: async () => {
             state.registered = !state.insertFails;
             return state.insertFails ? { error: new Error("Save failed"), data: null } : { data: { id: "saved-id" }, error: null };
@@ -39,6 +39,7 @@ beforeEach(() => {
   state.registered = false;
   state.insertFails = false;
   state.ownsVoice = false;
+  state.pronunciations = [];
   vi.stubEnv("ELEVENLABS_API_KEY", "test-only");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ voice_id: "testVoice12345" }), { status: 200 })));
 });
@@ -116,6 +117,19 @@ describe("Paid call usage gates", () => {
 });
 
 describe('Take generation', () => {
+  it('applies private pronunciations to stock speech and keeps input text unchanged', async () => {
+    state.signedIn = true; state.pronunciations = [{ term: 'Vocalis', say_as: 'voh cal iss' }];
+    vi.stubEnv('LOVABLE_API_KEY', 'test-only');
+    const data = { text: 'Welcome to Vocalis', voice: 'Kore' };
+    await generateSpeech({ data });
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)).contents[0].parts[0].text).toBe('Welcome to voh cal iss');
+    expect(data.text).toBe('Welcome to Vocalis');
+  });
+  it('applies pronunciations to owned cloned speech', async () => {
+    state.signedIn = true; state.ownsVoice = true; state.pronunciations = [{ term: 'Vocalis', say_as: 'voh cal iss' }];
+    await speakWithMyVoice({ data: { text: 'Vocalis', voiceId: 'testVoice12345' } });
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)).text).toBe('voh cal iss');
+  });
   it('sends saved-voice take speed, stress and break settings and reserves its usage', async () => {
     state.signedIn = true; state.ownsVoice = true;
     await speakWithMyVoice({ data: { text: 'Hello friend.', voiceId: 'testVoice12345', delivery: { pace: 'faster', emphasis: 'friend', pause: 0.5 } } });

@@ -14,6 +14,7 @@ import { saveClip, saveScript } from "@/lib/library";
 import { supabase } from "@/integrations/supabase/client";
 import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
 import { LineTakes } from '@/components/LineTakes';
+import { PronunciationHints } from '@/components/PronunciationHints';
 
 export const Route = createFileRoute("/")({
   validateSearch: (s: Record<string, unknown>): { script?: string } =>
@@ -161,6 +162,7 @@ function Studio() {
           </div>
 
           {!user && <AISignIn />}
+          <PronunciationHints text={text} />
           <ScriptGenerator onScript={setText} disabled={!!busy || !user} />
 
           <div className="mt-4 rounded-xl border bg-secondary p-4">

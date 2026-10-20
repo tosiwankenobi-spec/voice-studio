@@ -18,6 +18,7 @@ import { Link } from "@tanstack/react-router";
 import { deletedTimelineWords, isPureDeletion, type Word } from "@/lib/audio";
 import { changedSpan, alignTranscriptWords } from '@/lib/patch';
 import { SiteHeader } from "@/components/SiteHeader";
+import { PronunciationHints } from '@/components/PronunciationHints';
 import { askClaude, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
 export const Route = createFileRoute("/editor")({
@@ -310,6 +311,7 @@ function Editor() {
               <p className="mt-2 text-xs text-muted-foreground">
                 {busy === 'patch' ? status || 'Generating changed words…' : ''}
               </p>
+              <PronunciationHints text={text} />
             </section>
 
             <aside className="flex flex-col gap-6">

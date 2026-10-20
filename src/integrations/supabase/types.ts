@@ -79,6 +79,30 @@ export type Database = {
         }
         Relationships: []
       }
+      pronunciations: {
+        Row: {
+          created_at: string
+          id: string
+          say_as: string
+          term: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          say_as: string
+          term: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          say_as?: string
+          term?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       script_takes: {
         Row: {
           chosen: boolean

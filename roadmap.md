@@ -1,4 +1,8 @@
 - [x] Require authenticated access on all AI spending endpoints and show sign-in prompts.
+- [ ] Add talking-avatar creation, narration preview and video download.
+- [ ] Add browser-only pause/filler cleanup, noise reduction, loudness presets, A/B preview and undo.
+- [ ] Add private pronunciation dictionary, server-side TTS replacement and script suggestions.
+- [ ] Verify new workflows and run regression tests.
 - [x] Require voice-copying consent and save clones durably, cleaning up failed saves.
 - [x] Match Recording Editor download extensions to audio format.
 - [x] Run security regression tests (26 passed) and verify signed-out blocking, consent controls, authenticated images, stock re-speaking and saved clip readback.
