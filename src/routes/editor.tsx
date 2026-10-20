@@ -66,7 +66,7 @@ function Editor() {
       stream.getTracks().forEach((t) => t.stop());
       const mime = rec.mimeType || "audio/webm";
       const ext = mime.includes("mp4") ? "m4a" : "webm";
-      const blob = new Blob(chunks, { type: mime.split(";")[0] });
+      const blob = new Blob(chunks, { type: mime.split(";")[0] ?? "audio/webm" });
       if (blob.size < 1000) { toast.error("That recording was empty."); return; }
       void onFile(new File([blob], `Microphone recording.${ext}`, { type: blob.type }));
     };
