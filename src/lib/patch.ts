@@ -1,6 +1,27 @@
 import { lcsPairs, isPureDeletion, type Segment, type Word } from './audio';
 
 const normalize = (word: string) => word.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '');
+/** Keep transcript identity and punctuation even when AI timings omit words or overshoot the file. */
+export function alignTranscriptWords(text: string, timed: Word[], duration: number): Word[] {
+  const tokens = text.trim().split(/\s+/).filter(Boolean);
+  if (!timed.length || !tokens.length || duration <= 0) return [];
+  const scale = Math.min(1, duration / Math.max(duration, ...timed.map(w => w.e)));
+  const matches = new Map(lcsPairs(tokens.map(normalize), timed.map(w => normalize(w.w))));
+  const result: (Word | undefined)[] = tokens.map((w, i) => {
+    const k = matches.get(i), source = k === undefined ? undefined : timed[k];
+    return source ? { w, s: Math.max(0, source.s * scale), e: Math.min(duration, source.e * scale) } : undefined;
+  });
+  let index = 0;
+  while (index < tokens.length) {
+    if (result[index]) { index++; continue; }
+    const startIndex = index;
+    while (index < tokens.length && !result[index]) index++;
+    const start = result[startIndex - 1]?.e ?? 0;
+    const end = result[index]?.s ?? duration;
+    for (let k = startIndex; k < index; k++) result[k] = { w: tokens[k] ?? '', s: start + (end - start) * (k - startIndex) / (index - startIndex), e: start + (end - start) * (k - startIndex + 1) / (index - startIndex) };
+  }
+  return result.filter((w): w is Word => !!w);
+}
 export function changedSpan(before: string, after: string) {
   const a = before.trim().split(/\s+/).filter(Boolean);
   const b = after.trim().split(/\s+/).filter(Boolean);

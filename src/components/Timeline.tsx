@@ -190,7 +190,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
     const weight = phraseWords.reduce((sum, w) => sum + Math.max(1, w.length), 0);
     let time = sourceStart;
     const newWords = phraseWords.map(w => { const s = time; time += (sourceEnd - sourceStart) * Math.max(1, w.length) / weight; return { w, s, e: time, patchId: id }; });
-    const nextWords = [...words, ...newWords];
+    const nextWords = [...words, ...newWords].sort((a, b) => a.s - b.s);
     const next = [...sliceTimeline(segs, 0, matched.start), { id: uid(), start: sourceStart, end: sourceEnd, patchId: id }, ...sliceTimeline(segs, matched.end, total)];
     stop();
     setHistory(h => [...h.slice(-50), { segs, words, patches }]);

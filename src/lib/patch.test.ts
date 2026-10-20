@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { changedSpan, patchRange, matchPatch, trimSilence, rms, CROSSFADE_SECONDS, NEIGHBOUR_SECONDS } from './patch';
+import { alignTranscriptWords, changedSpan, patchRange, matchPatch, trimSilence, rms, CROSSFADE_SECONDS, NEIGHBOUR_SECONDS } from './patch';
 
 describe('contextual LCS patches', () => {
+  it('preserves every transcript word and punctuation when AI timing text omits words', () => {
+    const words = alignTranscriptWords('Hello dear friend.', [{ w: 'hello', s: 0, e: 0.5 }, { w: 'friend', s: 1.5, e: 2 }], 2);
+    expect(words).toEqual([{ w: 'Hello', s: 0, e: 0.5 }, { w: 'dear', s: 0.5, e: 1.5 }, { w: 'friend.', s: 1.5, e: 2 }]);
+  });
+  it('keeps word timings inside the real recording duration', () => {
+    const words = alignTranscriptWords('Hello friend.', [{ w: 'Hello', s: 0, e: 2 }, { w: 'friend', s: 3, e: 4 }], 2);
+    expect(words.at(-1)?.e).toBe(2); expect(words[1]?.s).toBe(1.5);
+  });
   it('replaces a rewritten word with one context word on either side', () => {
     expect(changedSpan('We bake fresh bread today.', 'We bake tasty bread today.')).toEqual({ oldStart: 1, oldEnd: 4, newStart: 1, newEnd: 4, phrase: 'bake tasty bread' });
   });

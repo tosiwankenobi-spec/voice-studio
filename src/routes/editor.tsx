@@ -16,7 +16,7 @@ import { createVoice, listVoices } from "@/lib/voices";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { deletedTimelineWords, isPureDeletion, type Word } from "@/lib/audio";
-import { changedSpan } from '@/lib/patch';
+import { changedSpan, alignTranscriptWords } from '@/lib/patch';
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
@@ -143,8 +143,10 @@ function Editor() {
       const fd = new FormData();
       fd.append("file", file);
       const audio = new AudioContext();
+      let duration = 0;
       try {
         const decoded = await audio.decodeAudioData(await file.arrayBuffer());
+        duration = decoded.duration;
         fd.append("seconds", String(decoded.duration));
       } catch {
         // Some video containers cannot be decoded here; zero means unknown, not free usage.
@@ -156,7 +158,7 @@ function Editor() {
       setTranscript(r.text);
       setText(r.text);
       synced.current = r.text;
-      setWords(r.words);
+      setWords(duration ? alignTranscriptWords(r.text, r.words, duration) : r.words);
       if (!r.words.length) toast.message("Word timings unavailable — splits will cut at the exact playhead.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Transcription failed");
