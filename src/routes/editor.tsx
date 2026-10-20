@@ -145,7 +145,7 @@ function Editor() {
       const r = await claude({
         data: { text, instruction: "Remove filler words (um, uh, like, you know), false starts and repeated words. Keep the speaker's wording and meaning otherwise unchanged." },
       });
-      setText(r.text);
+      onTextChange(r.text);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Claude failed");
     } finally {
