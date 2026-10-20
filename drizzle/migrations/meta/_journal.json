@@ -36,6 +36,13 @@
       "when": 1792503997225,
       "tag": "0004_add_ai_usage_events",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792504232576,
+      "tag": "0005_create_script_takes",
+      "breakpoints": true
     }
   ]
 }

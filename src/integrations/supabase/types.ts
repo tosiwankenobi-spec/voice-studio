@@ -79,6 +79,53 @@ export type Database = {
         }
         Relationships: []
       }
+      script_takes: {
+        Row: {
+          chosen: boolean
+          created_at: string
+          id: string
+          line_index: number
+          line_text: string
+          script_id: string
+          settings: Json
+          storage_path: string
+          user_id: string
+          voice: string
+        }
+        Insert: {
+          chosen?: boolean
+          created_at?: string
+          id?: string
+          line_index: number
+          line_text: string
+          script_id: string
+          settings?: Json
+          storage_path: string
+          user_id?: string
+          voice: string
+        }
+        Update: {
+          chosen?: boolean
+          created_at?: string
+          id?: string
+          line_index?: number
+          line_text?: string
+          script_id?: string
+          settings?: Json
+          storage_path?: string
+          user_id?: string
+          voice?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "script_takes_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scripts: {
         Row: {
           content: string
