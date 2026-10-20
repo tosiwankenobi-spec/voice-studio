@@ -1,4 +1,4 @@
-export type Segment = { id: string; start: number; end: number };
+export type Segment = { id: string; start: number; end: number; patchId?: string };
 
 export const segLen = (s: Segment) => s.end - s.start;
 export const totalLength = (segs: Segment[]) => segs.reduce((a, s) => a + segLen(s), 0);
@@ -80,7 +80,7 @@ export function encodeWav(buf: AudioBuffer): Blob {
 }
 
 /** A transcribed word, timed in seconds of the ORIGINAL recording. */
-export type Word = { w: string; s: number; e: number };
+export type Word = { w: string; s: number; e: number; patchId?: string };
 
 /** Convert timeline time to original-recording time. */
 export function toSource(segs: Segment[], t: number) {
@@ -170,7 +170,7 @@ const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
 const tokens = (t: string) => t.split(/\s+/).map(norm).filter(Boolean);
 
 /** Pairs of matching positions (i in a, j in b) from a longest common subsequence. */
-function lcsPairs(a: string[], b: string[]) {
+export function lcsPairs(a: string[], b: string[]) {
   const n = a.length, m = b.length;
   const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
