@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { checkVideo, startVideo } from "@/lib/media.functions";
 
 /** Starts a video job and polls until it's stored. Returns a playable URL. */
-export async function animate(opts: { prompt: string; image?: string; seconds?: number; onProgress?: (p: number) => void }) {
+export async function animate(opts: { prompt: string; image?: string | undefined; seconds?: number | undefined; onProgress?: (p: number) => void }) {
   const { id } = await startVideo({ data: { prompt: opts.prompt, image: opts.image, seconds: opts.seconds } });
   for (;;) {
     await new Promise((r) => setTimeout(r, 7000));

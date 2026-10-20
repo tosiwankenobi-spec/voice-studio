@@ -23,7 +23,7 @@ export const Route = createFileRoute("/images")({
   component: ImageStudio,
 });
 
-type Item = { id: string; prompt: string; src: string; final: boolean; video?: string; animating?: boolean; progress?: number };
+type Item = { id: string; prompt: string; src: string; final: boolean; video?: string | undefined; animating?: boolean | undefined; progress?: number | undefined };
 
 function ImageStudio() {
   const { user } = useAuth();

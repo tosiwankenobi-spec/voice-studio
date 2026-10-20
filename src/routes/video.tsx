@@ -33,12 +33,12 @@ type Scene = {
   narration: string;
   imagePrompt: string;
   motion: string;
-  image?: string;
-  imageFinal?: boolean;
-  audio?: string;
-  seconds?: number;
-  video?: string;
-  busy?: string;
+  image?: string | undefined;
+  imageFinal?: boolean | undefined;
+  audio?: string | undefined;
+  seconds?: number | undefined;
+  video?: string | undefined;
+  busy?: string | undefined;
 };
 
 function VideoStudio() {

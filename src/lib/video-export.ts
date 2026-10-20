@@ -1,4 +1,4 @@
-export type RenderScene = { image?: string; video?: string; audio?: string; seconds: number };
+export type RenderScene = { image?: string | undefined; video?: string | undefined; audio?: string | undefined; seconds: number };
 
 function loadImg(src: string) {
   return new Promise<HTMLImageElement>((res, rej) => {

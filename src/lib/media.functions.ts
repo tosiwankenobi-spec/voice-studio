@@ -85,7 +85,7 @@ export const planScenes = createServerFn({ method: "POST" })
 
 export const startVideo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { prompt: string; image?: string; seconds?: number }) => {
+  .inputValidator((d: { prompt: string; image?: string | undefined; seconds?: number | undefined }) => {
     const prompt = String(d.prompt ?? "").trim().slice(0, 3000);
     if (!prompt) throw new Error("Describe the motion first.");
     const seconds = Math.min(10, Math.max(3, Math.round(Number(d.seconds) || 8)));
