@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Upload, Loader2, AudioLines, Download, RotateCcw, Sparkles, Mic } from "lucide-react";
+import { Upload, Loader2, Circle, Square, AudioLines, Download, RotateCcw, Sparkles, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
@@ -46,6 +46,55 @@ function Editor() {
   const [myVoiceId, setMyVoiceId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const { user } = useAuth();
+  const [recording, setRecording] = useState(false);
+  const [recSecs, setRecSecs] = useState(0);
+  const recRef = useRef<{ rec: MediaRecorder; stream: MediaStream; timer: number } | null>(null);
+
+  async function startRecording() {
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      toast.error("Microphone access was blocked. Allow it in your browser's address bar and try again.");
+      return;
+    }
+    const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+    const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const mime = rec.mimeType || "audio/webm";
+      const ext = mime.includes("mp4") ? "m4a" : "webm";
+      const blob = new Blob(chunks, { type: mime.split(";")[0] ?? "audio/webm" });
+      if (blob.size < 1000) { toast.error("That recording was empty."); return; }
+      void onFile(new File([blob], `Microphone recording.${ext}`, { type: blob.type }));
+    };
+    rec.start(500);
+    setRecSecs(0);
+    const timer = window.setInterval(() => setRecSecs((s) => s + 1), 1000);
+    recRef.current = { rec, stream, timer };
+    setRecording(true);
+  }
+
+  function stopRecording() {
+    const r = recRef.current;
+    if (!r) return;
+    clearInterval(r.timer);
+    r.rec.stop();
+    recRef.current = null;
+    setRecording(false);
+  }
+
+  const recButton = recording ? (
+    <Button variant="destructive" onClick={stopRecording}>
+      <Square className="h-4 w-4" /> Stop recording · {Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, "0")}
+    </Button>
+  ) : (
+    <Button variant="outline" onClick={startRecording} disabled={!!busy}>
+      <Circle className="h-4 w-4 fill-destructive text-destructive" /> Record with microphone
+    </Button>
+  );
 
   async function onFile(file: File) {
     if (file.size > 25 * 1024 * 1024) {
@@ -140,6 +189,7 @@ function Editor() {
         />
 
         {!original ? (
+          <>
           <button
             onClick={() => input.current?.click()}
             className="mt-8 flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed bg-card p-16 text-muted-foreground hover:border-primary hover:text-foreground"
@@ -148,6 +198,8 @@ function Editor() {
             <span className="font-display text-xl font-bold text-foreground">Upload a recording</span>
             <span className="text-sm">Audio or video, up to 25 MB</span>
           </button>
+          <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">or {recButton}</div>
+          </>
         ) : (
           <>
           {file && (
@@ -196,12 +248,13 @@ function Editor() {
               <div className="rounded-2xl border bg-card p-6">
                 <div className="flex items-center justify-between">
                   <h2 className="font-display text-lg font-bold">Original</h2>
-                  <Button size="sm" variant="ghost" onClick={() => input.current?.click()} disabled={!!busy}>
+                  <Button size="sm" variant="ghost" onClick={() => input.current?.click()} disabled={!!busy || recording}>
                     Replace
                   </Button>
                 </div>
                 <p className="mt-1 truncate text-xs text-muted-foreground">{original.name}</p>
                 <audio controls src={original.url} className="mt-3 w-full" />
+                <div className="mt-3 [&>button]:w-full">{recButton}</div>
               </div>
 
               <div className="rounded-2xl border bg-card p-6">
