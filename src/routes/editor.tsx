@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { saveClip } from "@/lib/library";
+import { Timeline } from "@/components/Timeline";
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
@@ -143,7 +144,20 @@ function Editor() {
             <span className="text-sm">Audio or video, up to 25 MB</span>
           </button>
         ) : (
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+          <>
+          {file && (
+            <div className="mt-8">
+              <Timeline
+                file={file}
+                onSave={user ? (blob) => {
+                  saveClip({ dataUrl: URL.createObjectURL(blob), voice: "Edited recording", text: text || original.name })
+                    .then(() => toast.success("Edit saved to your library"))
+                    .catch((e) => toast.error(e instanceof Error ? e.message : "Couldn't save"));
+                } : undefined}
+              />
+            </div>
+          )}
+          <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_360px]">
             <section className="rounded-2xl border bg-card p-6">
               <div className="flex items-center justify-between">
                 <h2 className="font-display text-lg font-bold">Transcript</h2>
@@ -219,6 +233,7 @@ function Editor() {
               </div>
             </aside>
           </div>
+          </>
         )}
       </main>
     </div>
