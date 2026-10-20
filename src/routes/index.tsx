@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { saveClip, saveScript } from "@/lib/library";
 import { supabase } from "@/integrations/supabase/client";
 import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
+import { LineTakes } from '@/components/LineTakes';
 
 export const Route = createFileRoute("/")({
   validateSearch: (s: Record<string, unknown>): { script?: string } =>
@@ -49,6 +50,18 @@ function Studio() {
   const [scriptId, setScriptId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const loaded = useRef(false);
+  const saving = useRef<Promise<string> | null>(null);
+  const scriptIdRef = useRef<string | null>(null);
+  async function ensureScript() {
+    if (saving.current) return saving.current;
+    const promise = saveScript(text, scriptIdRef.current);
+    saving.current = promise;
+    try {
+      const id = await promise;
+      scriptIdRef.current = id; setScriptId(id); setSaveState('saved');
+      return id;
+    } finally { saving.current = null; }
+  }
 
   // Open a saved script from the library
   useEffect(() => {
@@ -57,6 +70,7 @@ function Studio() {
       if (data) {
         loaded.current = true;
         setScriptId(data.id);
+        scriptIdRef.current = data.id;
         setText(data.content);
         setSaveState("saved");
       }
@@ -73,7 +87,7 @@ function Studio() {
     setSaveState("saving");
     const t = setTimeout(async () => {
       try {
-        setScriptId(await saveScript(text, scriptId));
+        await ensureScript();
         setSaveState("saved");
       } catch {
         setSaveState("idle");
@@ -171,6 +185,7 @@ function Studio() {
               </Button>
             </form>
           </div>
+          <LineTakes text={text} scriptId={scriptId} ensureScript={ensureScript} voice={voice} style={style} signedIn={!!user} disabled={!!busy} onVoiceChange={setVoice} />
         </section>
 
         <aside className="flex flex-col gap-6">
