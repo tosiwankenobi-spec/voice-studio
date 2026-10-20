@@ -13,7 +13,7 @@ import { generateSpeech, speakWithMyVoice, VOICES } from '@/lib/studio.functions
 import { listVoices } from '@/lib/voices';
 import { useAuth } from '@/hooks/useAuth';
 export const Route = createFileRoute('/_authenticated/pronunciations')({
-  validateSearch: (s: Record<string, unknown>) => ({ term: typeof s.term === 'string' ? s.term : '' }),
+  validateSearch: (s: Record<string, unknown>) => ({ term: typeof s['term'] === 'string' ? s['term'] : '' }),
   head: () => ({ meta: [{ title: 'Pronunciations — Vocalis' }, { name: 'description', content: 'Save personal pronunciation spellings and hear them in your chosen voice.' }, { property: 'og:title', content: 'Pronunciations — Vocalis' }, { property: 'og:description', content: 'Your personal pronunciation dictionary for every Vocalis voiceover.' }, { property: 'og:type', content: 'website' }, { name: 'twitter:card', content: 'summary' }] }),
   component: Pronunciations,
 });
