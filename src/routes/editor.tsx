@@ -8,6 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { saveClip } from "@/lib/library";
 import { Timeline } from "@/components/Timeline";
+import { VoicePreview } from "@/components/VoicePreview";
+import { createVoice, listVoices } from "@/lib/voices";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import type { Word } from "@/lib/audio";
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
@@ -46,6 +50,9 @@ function Editor() {
   const [myVoiceId, setMyVoiceId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const { user } = useAuth();
+  const qc = useQueryClient();
+  const saved = useQuery({ queryKey: ["voices"], queryFn: listVoices, enabled: !!user });
+  const savedVoice = voice.startsWith("saved:") ? saved.data?.find((v) => v.id === voice.slice(6)) : undefined;
   const [recording, setRecording] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
   const recRef = useRef<{ rec: MediaRecorder; stream: MediaStream; timer: number } | null>(null);
@@ -141,14 +148,23 @@ function Editor() {
     setBusy("speak");
     try {
       let r;
-      if (voice === MINE) {
+      if (savedVoice) {
+        setStatus(`Speaking as ${savedVoice.name}…`);
+        r = await speakMine({ data: { text, voiceId: savedVoice.eleven_voice_id } });
+      } else if (voice === MINE) {
         if (!file) throw new Error("Upload a recording first.");
         let id = myVoiceId;
         if (!id) {
           setStatus("Learning your voice…");
-          const fd = new FormData();
-          fd.append("file", file);
-          id = (await clone({ data: fd })).voiceId;
+          if (user) {
+            id = (await createVoice(file, file.name.replace(/\.[^.]+$/, ""))).voiceId;
+            qc.invalidateQueries({ queryKey: ["voices"] });
+            toast.success("Voice saved to My Voices — rename it there.");
+          } else {
+            const fd = new FormData();
+            fd.append("file", file);
+            id = (await clone({ data: fd })).voiceId;
+          }
           setMyVoiceId(id);
         }
         setStatus("Speaking in your voice…");
@@ -159,7 +175,7 @@ function Editor() {
       const url = `data:${r.mime};base64,${r.audio}`;
       setResult(url);
       if (user) {
-        saveClip({ dataUrl: url, voice: voice === MINE ? "Your voice" : voice, text })
+        saveClip({ dataUrl: url, voice: savedVoice?.name ?? (voice === MINE ? "Your voice" : voice), text })
           .then(() => toast.success("Clip saved to your library"))
           .catch((e) => toast.error(e instanceof Error ? e.message : "Couldn't save clip"));
       }
@@ -267,7 +283,24 @@ function Editor() {
                 >
                   <Mic className="h-4 w-4" /> My real voice{myVoiceId ? " ✓" : ""}
                 </Button>
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                {user && (saved.data?.length ?? 0) > 0 && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>My saved voices</span>
+                      <Link to="/voices" className="hover:text-foreground">Manage</Link>
+                    </div>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {saved.data!.map((v) => (
+                        <Button key={v.id} size="sm" variant={voice === `saved:${v.id}` ? "default" : "outline"} onClick={() => setVoice(`saved:${v.id}`)} className="justify-start">
+                          <Mic className="h-4 w-4" /> {v.name}
+                        </Button>
+                      ))}
+                    </div>
+                    {savedVoice && <div className="mt-2"><VoicePreview voice={savedVoice} compact /></div>}
+                  </div>
+                )}
+                <p className="mt-4 text-xs text-muted-foreground">Stock voices</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
                   {VOICES.map((v) => (
                     <Button key={v} size="sm" variant={voice === v ? "default" : "outline"} onClick={() => setVoice(v)}>
                       {v}
@@ -281,7 +314,7 @@ function Editor() {
                 {result && (
                   <div className="mt-4 rounded-xl bg-muted p-3">
                     <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Edited version · {voice === MINE ? "Your voice" : voice}</span>
+                      <span>Edited version · {savedVoice?.name ?? (voice === MINE ? "Your voice" : voice)}</span>
                       <a href={result} download="vocalis-edit.wav" aria-label="Download">
                         <Download className="h-4 w-4 hover:text-primary" />
                       </a>
