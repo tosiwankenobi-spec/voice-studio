@@ -1,0 +1,4 @@
+- [ ] Require authenticated access on all AI spending endpoints and show sign-in prompts.
+- [ ] Require voice-copying consent and save clones durably, cleaning up failed saves.
+- [ ] Match Recording Editor download extensions to audio format.
+- [ ] Run security regression tests and verify the app flows.

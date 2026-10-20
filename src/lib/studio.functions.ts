@@ -1,4 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { requireVoiceConsent } from "@/lib/studio-validation";
 
 const GATEWAY = "https://ai.gateway.lovable.dev";
 const TTS_MODEL = "google/gemini-3.1-flash-tts-preview";
@@ -25,6 +27,7 @@ async function failure(res: Response) {
 }
 
 export const generateSpeech = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { text: string; voice: string; style?: string }) => {
     const text = String(d.text ?? "").trim();
     if (!text) throw new Error("Write something first.");
@@ -55,6 +58,7 @@ export const generateSpeech = createServerFn({ method: "POST" })
   });
 
 export const askClaude = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { text: string; instruction: string }) => {
     const instruction = String(d.instruction ?? "").trim();
     if (!instruction) throw new Error("Tell Claude what to do.");
@@ -114,6 +118,7 @@ export const askClaude = createServerFn({ method: "POST" })
 const MAX_UPLOAD = 25 * 1024 * 1024;
 
 export const transcribeRecording = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => {
     if (!(d instanceof FormData)) throw new Error("Upload a recording.");
     const file = d.get("file");
@@ -229,14 +234,17 @@ async function elevenFailure(res: Response) {
 }
 
 export const cloneMyVoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => {
     if (!(d instanceof FormData)) throw new Error("Upload a recording.");
+    requireVoiceConsent(d.get("consent"));
     const file = d.get("file");
     if (!(file instanceof File) || !file.size) throw new Error("Upload a recording.");
     if (file.size > MAX_UPLOAD) throw new Error("Recordings must be under 25 MB.");
-    return { file };
+    if (!file.type.startsWith("audio/") && !file.type.startsWith("video/")) throw new Error("That file isn't audio or video.");
+    return { file, name: String(d.get("name") ?? "My voice").trim().slice(0, 80) || "My voice" };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const form = new FormData();
     form.append("name", `Vocalis – ${data.file.name}`.slice(0, 100));
     form.append("files", data.file, data.file.name);
@@ -248,10 +256,22 @@ export const cloneMyVoice = createServerFn({ method: "POST" })
     });
     if (!res.ok) throw await elevenFailure(res);
     const j = (await res.json()) as { voice_id: string };
-    return { voiceId: j.voice_id };
+    // Register before returning so closing the browser cannot abandon the clone.
+    const { data: row, error } = await context.supabase.from("voices")
+      .insert({ name: data.name, eleven_voice_id: j.voice_id, user_id: context.userId })
+      .select("id").single();
+    if (error || !row) {
+      const cleanup = await fetch(`${ELEVEN}/v1/voices/${encodeURIComponent(j.voice_id)}`, {
+        method: "DELETE", headers: { "xi-api-key": elevenKey() },
+      });
+      if (!cleanup.ok && cleanup.status !== 404) console.error("Failed to clean up unsaved voice", cleanup.status);
+      throw new Error("Couldn't save the copied voice. Please try again.");
+    }
+    return { id: row.id, voiceId: j.voice_id };
   });
 
 export const speakWithMyVoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { text: string; voiceId: string }) => {
     const text = String(d.text ?? "").trim();
     if (!text) throw new Error("Write something first.");
@@ -259,7 +279,10 @@ export const speakWithMyVoice = createServerFn({ method: "POST" })
     if (!/^[A-Za-z0-9]{10,40}$/.test(String(d.voiceId))) throw new Error("Invalid voice.");
     return { text, voiceId: d.voiceId };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    const { data: owned, error } = await context.supabase.from("voices").select("id")
+      .eq("eleven_voice_id", data.voiceId).eq("user_id", context.userId).maybeSingle();
+    if (error || !owned) throw new Error("Choose one of your saved voices.");
     const res = await fetch(`${ELEVEN}/v1/text-to-speech/${data.voiceId}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "xi-api-key": elevenKey(), "Content-Type": "application/json" },
