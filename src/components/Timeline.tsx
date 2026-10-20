@@ -79,6 +79,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
         setSegs([{ id: uid(), start: 0, end: buf.duration }]);
         setHistory([]);
         setPatches([]);
+        cleanupBefore.current = null;
         setPlayhead(0);
       } catch {
         toast.error("This file's audio couldn't be opened on the timeline.");
@@ -108,7 +109,8 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
       stop();
       if (from >= total - 0.01) from = 0;
       void ctx.resume();
-      const hit = locate(segs, from)!;
+      const hit = locate(segs, from);
+      if (!hit) return;
       const t0 = ctx.currentTime + 0.05;
       let at = t0;
       segs.slice(hit.index).forEach((s, i) => {
@@ -141,7 +143,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
   const commit = (next: Segment[]) => {
     if (next === segs) return;
     stop();
-    setHistory((h) => [...h.slice(-50), { segs, words, patches }]);
+    setHistory((h) => [...h.slice(-50), { segs, words, patches, buffer }]);
     setSegs(next);
     setPlayhead((p) => Math.min(p, totalLength(next)));
     syncText(next);
@@ -158,7 +160,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
       const { a, b } = wordRange(words, p.i);
       const qa = p.i === 0 ? a : quietestNear(buffer, a, 0.15);
       const qb = p.i === words.length - 1 ? b : quietestNear(buffer, b, 0.15);
-      next = cutSource(next, Math.min(qa, words[p.i]!.s), Math.max(qb, words[p.i]!.e), uid);
+      next = cutSource(next, Math.min(qa, words[p.i]?.s ?? qa), Math.max(qb, words[p.i]?.e ?? qb), uid);
     }
     if (!next.length) { toast.error("You can't cut every word."); return false; }
     commit(next);
@@ -198,7 +200,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
     const nextWords = [...words, ...newWords].sort((a, b) => a.s - b.s);
     const next = [...sliceTimeline(segs, 0, matched.start), { id: uid(), start: sourceStart, end: sourceEnd, patchId: id }, ...sliceTimeline(segs, matched.end, total)];
     stop();
-    setHistory(h => [...h.slice(-50), { segs, words, patches }]);
+    setHistory(h => [...h.slice(-50), { segs, words, patches, buffer }]);
     setBuffer(combined); setSegs(next); setWords(nextWords);
     setPatches(p => [...p, { id, phrase: span.phrase, replaced, removedWords }]);
     setPlayhead(matched.start); setPicked(null);
@@ -212,7 +214,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
     if (patches.some(p => p.id !== record.id && p.replaced.some(s => s.patchId === record.id))) { toast.error('Undo the newer overlapping patch first.'); return; }
     const next = [...segs.slice(0, first), ...record.replaced, ...segs.slice(last + 1)];
     const timed = words.filter(w => w.patchId !== record.id);
-    stop(); setHistory(h => [...h.slice(-50), { segs, words, patches }]);
+    stop(); setHistory(h => [...h.slice(-50), { segs, words, patches, buffer }]);
     setSegs(next); setWords(timed); setPatches(p => p.filter(x => x.id !== record.id)); syncText(next, timed);
   }
   if (apiRef) apiRef.current = { timelineWords: () => placed.map((p) => words[p.i]?.w ?? ''), cutPlaced, patch };
@@ -236,7 +238,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
     if (!prev) return;
     stop();
     setHistory((h) => h.slice(0, -1));
-    setSegs(prev.segs); setWords(prev.words); setPatches(prev.patches); syncText(prev.segs, prev.words);
+    setBuffer(prev.buffer); setSegs(prev.segs); setWords(prev.words); setPatches(prev.patches); syncText(prev.segs, prev.words); setMeasured(null);
   };
 
   // Keyboard shortcuts
@@ -275,6 +277,62 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
     const t = Math.max(0, Math.min(total, ((e.clientX - r.left) / r.width) * total));
     setPlayhead(t);
     if (playing) play(t);
+  }
+
+  async function cleaned(options: CleanupOptions) {
+    if (!buffer) throw new Error('Wait for the recording to load.');
+    let next = segs;
+    // Cut only within each placed segment, avoiding removal of repeated source occurrences.
+    const positions = placedCleanupWords(segs, words);
+    const removed = new Set(options.fillers);
+    const ranges: { start: number; end: number }[] = [];
+    for (const k of removed) {
+      const w = positions[k]; if (!w) continue;
+      const prev = positions[k - 1], following = positions[k + 1];
+      ranges.push({ start: prev ? (prev.e + w.s) / 2 : w.s, end: following ? (w.e + following.s) / 2 : w.e });
+    }
+    ranges.sort((a, b) => b.start - a.start);
+    for (const range of ranges) next = [...sliceTimeline(next, 0, range.start), ...sliceTimeline(next, range.end, totalLength(next))];
+    if (!next.length) throw new Error("You can't remove every word.");
+    if (options.pauses) {
+      const cuts = pauseCuts(next, words, options.threshold, options.target, (t, r) => quietestNear(buffer, t, r));
+      for (const cut of cuts) next = cutSource(next, cut.start, cut.end, uid);
+    }
+    const rendered = await renderSegments(buffer, next);
+    const ctx = ctxRef.current;
+    if (!ctx) throw new Error('Wait for the recording to load.');
+    const timed = placedCleanupWords(next, words).map(w => ({ ...w, patchId: undefined }));
+    let channels = Array.from({ length: rendered.numberOfChannels }, (_, k) => rendered.getChannelData(k));
+    channels = reduceNoise(channels, rendered.sampleRate, options.noise);
+    if (options.loudness !== null) channels = normalizeLoudness(channels, rendered.sampleRate, options.loudness);
+    const output = ctx.createBuffer(channels.length, rendered.length, rendered.sampleRate);
+    channels.forEach((ch, k) => output.copyToChannel(new Float32Array(ch), k));
+    return { output, timed, lufs: integratedLoudness(channels, rendered.sampleRate) };
+  }
+  async function applyCleanup(options: CleanupOptions) {
+    stop();
+    const result = await cleaned(options);
+    cleanupBefore.current = { segs, words, patches, buffer };
+    setHistory(h => [...h.slice(-50), { segs, words, patches, buffer }]);
+    const next = [{ id: uid(), start: 0, end: result.output.duration }];
+    setBuffer(result.output); setSegs(next); setWords(result.timed); setPatches([]); setPlayhead(0); setMeasured(result.lufs);
+    syncText(next, result.timed);
+  }
+  async function previewCleanup(original: boolean, options: CleanupOptions) {
+    stop();
+    const ctx = ctxRef.current;
+    if (!ctx || !buffer) return;
+    await ctx.resume();
+    const prior = cleanupBefore.current;
+    const output = original ? await renderSegments(prior?.buffer ?? buffer, prior?.segs ?? segs) : (await cleaned(options)).output;
+    const src = ctx.createBufferSource(); src.buffer = output; src.connect(ctx.destination); src.start();
+    sources.current.push(src); setPlaying(true); src.onended = () => stop();
+  }
+  function undoCleanup() {
+    const snapshot = cleanupBefore.current;
+    if (!snapshot) return;
+    stop(); setHistory(h => [...h, { segs, words, patches, buffer }]);
+    setBuffer(snapshot.buffer); setSegs(snapshot.segs); setWords(snapshot.words); setPatches(snapshot.patches); syncText(snapshot.segs, snapshot.words); setMeasured(null); cleanupBefore.current = null;
   }
 
   if (!buffer) {
@@ -358,7 +416,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
                   onClick={(e) => pickWord(k, e.shiftKey)}
                   className={`mr-1 rounded px-0.5 ${sel ? "bg-primary text-primary-foreground" : words[p.i]?.patchId ? "bg-accent/30 text-accent" : k === currentWord ? "bg-accent/30 text-foreground" : "hover:bg-secondary"}`}
                 >
-                  {words[p.i]!.w}
+                  {words[p.i]?.w}
                 </button>
               );
             })}
@@ -366,6 +424,8 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
         </div>
       )}
 
+      <AudioCleanup words={placedCleanupWords(segs, words)} pauses={(threshold, target) => pauseCuts(segs, words, threshold, target, (t, r) => quietestNear(buffer, t, r))} apply={applyCleanup} preview={previewCleanup} undo={undoCleanup} canUndo={!!cleanupBefore.current} />
+      {measured !== null && <p className="mt-3 text-sm text-primary">{Number.isFinite(measured) ? `${measured.toFixed(1)} LUFS` : 'Silent recording'}</p>}
       {patches.length > 0 && <div className="mt-3 flex flex-wrap gap-2">{patches.map(p => <Button key={p.id} size="sm" variant="outline" disabled={!segs.some(s => s.patchId === p.id)} onClick={() => undoPatch(p)} title={`Undo patch: ${p.phrase}`}><Undo2 className="h-4 w-4" /><span className="max-w-48 truncate text-accent">{p.phrase}</span></Button>)}</div>}
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
