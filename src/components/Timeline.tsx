@@ -31,7 +31,7 @@ function Waveform({ buffer, seg }: { buffer: AudioBuffer; seg: Segment }) {
   return <canvas ref={ref} className="h-full w-full text-primary" />;
 }
 
-export function Timeline({ file, onSave }: { file: File; onSave?: (blob: Blob) => void }) {
+export function Timeline({ file, onSave }: { file: File; onSave?: ((blob: Blob) => void) | undefined }) {
   const ctxRef = useRef<AudioContext | null>(null);
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [segs, setSegs] = useState<Segment[]>([]);
