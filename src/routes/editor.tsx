@@ -2,11 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Upload, Loader2, AudioLines, Download, RotateCcw, Sparkles } from "lucide-react";
+import { Upload, Loader2, AudioLines, Download, RotateCcw, Sparkles, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SiteHeader } from "@/components/SiteHeader";
-import { askClaude, generateSpeech, transcribeRecording, VOICES } from "@/lib/studio.functions";
+import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
@@ -22,6 +22,8 @@ export const Route = createFileRoute("/editor")({
   component: Editor,
 });
 
+const MINE = "__mine__";
+
 function Editor() {
   const transcribe = useServerFn(transcribeRecording);
   const speak = useServerFn(generateSpeech);
@@ -33,6 +35,11 @@ function Editor() {
   const [voice, setVoice] = useState<string>("Kore");
   const [busy, setBusy] = useState<"upload" | "speak" | "clean" | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const clone = useServerFn(cloneMyVoice);
+  const speakMine = useServerFn(speakWithMyVoice);
+  const [file, setFile] = useState<File | null>(null);
+  const [myVoiceId, setMyVoiceId] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
 
   async function onFile(file: File) {
     if (file.size > 25 * 1024 * 1024) {
@@ -41,6 +48,9 @@ function Editor() {
     }
     setOriginal({ url: URL.createObjectURL(file), name: file.name });
     setResult(null);
+    setFile(file);
+    setMyVoiceId(null);
+    setVoice(MINE);
     setBusy("upload");
     try {
       const fd = new FormData();
@@ -72,12 +82,28 @@ function Editor() {
   async function respeak() {
     setBusy("speak");
     try {
-      const r = await speak({ data: { text, voice } });
+      let r;
+      if (voice === MINE) {
+        if (!file) throw new Error("Upload a recording first.");
+        let id = myVoiceId;
+        if (!id) {
+          setStatus("Learning your voice…");
+          const fd = new FormData();
+          fd.append("file", file);
+          id = (await clone({ data: fd })).voiceId;
+          setMyVoiceId(id);
+        }
+        setStatus("Speaking in your voice…");
+        r = await speakMine({ data: { text, voiceId: id } });
+      } else {
+        r = await speak({ data: { text, voice } });
+      }
       setResult(`data:${r.mime};base64,${r.audio}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Generation failed");
     } finally {
       setBusy(null);
+      setStatus("");
     }
   }
 
@@ -151,7 +177,14 @@ function Editor() {
 
               <div className="rounded-2xl border bg-card p-6">
                 <h2 className="font-display text-lg font-bold">Re-speak with</h2>
-                <p className="mt-1 text-xs text-muted-foreground">Pick the voice closest to the original speaker.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Use the speaker's real voice, or pick a stock voice.</p>
+                <Button
+                  className="mt-3 w-full"
+                  variant={voice === MINE ? "default" : "outline"}
+                  onClick={() => setVoice(MINE)}
+                >
+                  <Mic className="h-4 w-4" /> My real voice{myVoiceId ? " ✓" : ""}
+                </Button>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   {VOICES.map((v) => (
                     <Button key={v} size="sm" variant={voice === v ? "default" : "outline"} onClick={() => setVoice(v)}>
@@ -161,12 +194,12 @@ function Editor() {
                 </div>
                 <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !text.trim()} onClick={respeak}>
                   {busy === "speak" ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
-                  Re-speak edited text
+                  {status || "Re-speak edited text"}
                 </Button>
                 {result && (
                   <div className="mt-4 rounded-xl bg-muted p-3">
                     <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Edited version · {voice}</span>
+                      <span>Edited version · {voice === MINE ? "Your voice" : voice}</span>
                       <a href={result} download="vocalis-edit.wav" aria-label="Download">
                         <Download className="h-4 w-4 hover:text-primary" />
                       </a>
