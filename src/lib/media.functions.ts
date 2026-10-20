@@ -153,3 +153,26 @@ export const checkVideo = createServerFn({ method: "POST" })
     if (signed.error) throw new Error(signed.error.message);
     return { status: "done" as const, url: signed.data.signedUrl, progress: 100, error: null };
   });
+
+/** Deletes one of the signed-in user's saved voices, including the copy in their ElevenLabs account. */
+export const deleteMyVoice = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: { id: string }) => {
+    if (!/^[0-9a-f-]{36}$/.test(String(d.id))) throw new Error("Invalid voice.");
+    return { id: d.id };
+  })
+  .handler(async ({ data, context }) => {
+    const sb = context.supabase;
+    const { data: row, error } = await sb.from("voices").select("*").eq("id", data.id).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!row) throw new Error("Voice not found.");
+    const k = process.env["ELEVENLABS_API_KEY"];
+    if (k) {
+      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(row.eleven_voice_id)}`, { method: "DELETE", headers: { "xi-api-key": k } });
+      if (!r.ok && r.status !== 404 && r.status !== 400) console.error("ElevenLabs delete failed", r.status, await r.text());
+    }
+    if (row.sample_path) await sb.storage.from("clips").remove([row.sample_path]);
+    const del = await sb.from("voices").delete().eq("id", data.id);
+    if (del.error) throw new Error(del.error.message);
+    return { ok: true };
+  });
