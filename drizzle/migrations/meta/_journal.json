@@ -43,6 +43,13 @@
       "when": 1792504232576,
       "tag": "0005_create_script_takes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792505368185,
+      "tag": "0006_pronunciation_dictionary",
+      "breakpoints": true
     }
   ]
 }
