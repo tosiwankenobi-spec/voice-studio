@@ -35,7 +35,10 @@ function Editor() {
   const [result, setResult] = useState<string | null>(null);
 
   async function onFile(file: File) {
-    if (file.size > 25 * 1024 * 1024) return toast.error("Recordings must be under 25 MB.");
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error("Recordings must be under 25 MB.");
+      return;
+    }
     setOriginal({ url: URL.createObjectURL(file), name: file.name });
     setResult(null);
     setBusy("upload");
