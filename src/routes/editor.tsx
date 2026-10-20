@@ -51,6 +51,7 @@ function Editor() {
     clearTimeout(syncTimer.current);
     if (api && words.length) {
       const ks = deletedTimelineWords(synced.current, next, api.timelineWords());
+      console.log("tcut", JSON.stringify({ s: synced.current, next, tw: api.timelineWords(), ks }));
       if (ks.length) {
         if (!api.cutPlaced(ks)) return; // refused (would cut everything)
         synced.current = next;
