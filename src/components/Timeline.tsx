@@ -198,7 +198,7 @@ export function Timeline({ file, onSave }: { file: File; onSave?: ((blob: Blob) 
           <Button size="sm" onClick={() => (playing ? stop() : play(playhead))} aria-label={playing ? "Pause" : "Play"}>
             {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>
-          <span className="w-28 text-center font-mono text-sm tabular-nums text-muted-foreground">
+          <span className="w-36 whitespace-nowrap text-center font-mono text-sm tabular-nums text-muted-foreground">
             {fmt(playhead)} / {fmt(total)}
           </span>
           <Button size="sm" variant="outline" onClick={split} title="Split at playhead (S)"><Scissors className="h-4 w-4" /> Split</Button>
@@ -219,7 +219,7 @@ export function Timeline({ file, onSave }: { file: File; onSave?: ((blob: Blob) 
               onDragOver={(e) => e.preventDefault()}
               onDrop={() => { if (dragIdx !== null) commit(move(segs, dragIdx, i)); setDragIdx(null); }}
               onClick={(e) => { e.stopPropagation(); setSelected(s.id); }}
-              style={{ flexGrow: segLen(s), flexBasis: 0 }}
+              style={{ flexGrow: total ? (segLen(s) / total) * 1000 : 1, flexBasis: 0 }}
               className={`relative min-w-[6px] cursor-grab overflow-hidden rounded-lg border-2 bg-secondary active:cursor-grabbing ${
                 selected === s.id ? "border-primary" : "border-transparent hover:border-border"
               }`}
