@@ -116,3 +116,4 @@
 @utility shadow-glow { box-shadow: var(--shadow-glow); }
 @keyframes wave { 0%,100% { transform: scaleY(0.3) } 50% { transform: scaleY(1) } }
 @utility animate-wave { animation: wave 1s ease-in-out infinite; }
+@keyframes kenburns { from { transform: scale(1) } to { transform: scale(1.12) } }

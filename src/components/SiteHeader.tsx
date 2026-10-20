@@ -27,6 +27,8 @@ export function SiteHeader() {
       <nav className="flex items-center gap-1">
         <Link to="/" className={link} activeProps={active} activeOptions={{ exact: true }}>Voice Studio</Link>
         <Link to="/editor" className={link} activeProps={active}>Recording Editor</Link>
+        <Link to="/video" className={link} activeProps={active}>Video Studio</Link>
+        <Link to="/images" className={link} activeProps={active}>Image Studio</Link>
         <Link to="/library" className={link} activeProps={active}>My Library</Link>
         {ready && (user ? (
           <button onClick={signOut} className={link} aria-label="Sign out" title={user.email ?? ""}>

@@ -21,16 +21,22 @@ export const Route = createFileRoute("/_authenticated/library")({
 });
 
 async function loadLibrary() {
-  const [s, c] = await Promise.all([
+  const [s, c, m] = await Promise.all([
     supabase.from("scripts").select("*").order("updated_at", { ascending: false }),
     supabase.from("clips").select("*").order("created_at", { ascending: false }),
+    supabase.from("media").select("*").order("created_at", { ascending: false }),
   ]);
   if (s.error) throw s.error;
   if (c.error) throw c.error;
-  const paths = c.data.map((x) => x.storage_path);
+  if (m.error) throw m.error;
+  const paths = [...c.data.map((x) => x.storage_path), ...m.data.map((x) => x.storage_path)];
   const signed = paths.length ? await supabase.storage.from("clips").createSignedUrls(paths, 3600) : { data: [] };
   const urls = new Map((signed.data ?? []).map((x) => [x.path, x.signedUrl]));
-  return { scripts: s.data, clips: c.data.map((x) => ({ ...x, url: urls.get(x.storage_path) ?? "" })) };
+  return {
+    scripts: s.data,
+    clips: c.data.map((x) => ({ ...x, url: urls.get(x.storage_path) ?? "" })),
+    media: m.data.map((x) => ({ ...x, url: urls.get(x.storage_path) ?? "" })),
+  };
 }
 
 function Library() {
@@ -43,6 +49,12 @@ function Library() {
       toast.error(error.message);
       return;
     }
+    qc.invalidateQueries({ queryKey: ["library"] });
+  }
+  async function delMedia(id: string, path: string) {
+    await supabase.storage.from("clips").remove([path]);
+    const { error } = await supabase.from("media").delete().eq("id", id);
+    if (error) { toast.error(error.message); return; }
     qc.invalidateQueries({ queryKey: ["library"] });
   }
   async function delClip(id: string, path: string) {
@@ -100,6 +112,24 @@ function Library() {
                     </div>
                     <audio controls src={c.url} className="w-full" />
                     <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{c.text}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="rounded-2xl border bg-card p-6 lg:col-span-2">
+              <h2 className="font-display text-lg font-bold">Images &amp; videos ({data.media.length})</h2>
+              {data.media.length === 0 && <p className="mt-2 text-sm text-muted-foreground">No saved images or videos yet.</p>}
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {data.media.map((m) => (
+                  <div key={m.id} className="overflow-hidden rounded-xl bg-muted">
+                    {m.kind === "video" ? <video src={m.url} controls className="aspect-video w-full object-cover" /> : <img src={m.url} alt={m.prompt} className="aspect-video w-full object-cover" />}
+                    <div className="flex items-start justify-between gap-2 p-3 text-xs text-muted-foreground">
+                      <span className="line-clamp-2">{m.prompt || m.kind}</span>
+                      <div className="flex shrink-0 gap-2">
+                        <a href={m.url} download aria-label="Download"><Download className="h-4 w-4 hover:text-primary" /></a>
+                        <button aria-label="Delete" onClick={() => delMedia(m.id, m.storage_path)}><Trash2 className="h-4 w-4 hover:text-destructive" /></button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
