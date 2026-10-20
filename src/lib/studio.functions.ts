@@ -139,3 +139,70 @@ export const transcribeRecording = createServerFn({ method: "POST" })
     if (!text) throw new Error("No speech was found in that recording.");
     return { text };
   });
+
+const ELEVEN = "https://api.elevenlabs.io";
+
+function elevenKey() {
+  const k = process.env["ELEVENLABS_API_KEY"];
+  if (!k) throw new Error("ElevenLabs isn't connected.");
+  return k;
+}
+
+async function elevenFailure(res: Response) {
+  const body = await res.text();
+  let msg = body;
+  try {
+    const j = JSON.parse(body);
+    msg = j?.detail?.message ?? j?.detail ?? body;
+  } catch {}
+  if (res.status === 401) return new Error(`ElevenLabs refused the request: ${msg}`);
+  return new Error(`ElevenLabs error (${res.status}): ${String(msg).slice(0, 300)}`);
+}
+
+export const cloneMyVoice = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => {
+    if (!(d instanceof FormData)) throw new Error("Upload a recording.");
+    const file = d.get("file");
+    if (!(file instanceof File) || !file.size) throw new Error("Upload a recording.");
+    if (file.size > MAX_UPLOAD) throw new Error("Recordings must be under 25 MB.");
+    return { file };
+  })
+  .handler(async ({ data }) => {
+    const form = new FormData();
+    form.append("name", `Vocalis – ${data.file.name}`.slice(0, 100));
+    form.append("files", data.file, data.file.name);
+    form.append("remove_background_noise", "true");
+    const res = await fetch(`${ELEVEN}/v1/voices/add`, {
+      method: "POST",
+      headers: { "xi-api-key": elevenKey() },
+      body: form,
+    });
+    if (!res.ok) throw await elevenFailure(res);
+    const j = (await res.json()) as { voice_id: string };
+    return { voiceId: j.voice_id };
+  });
+
+export const speakWithMyVoice = createServerFn({ method: "POST" })
+  .inputValidator((d: { text: string; voiceId: string }) => {
+    const text = String(d.text ?? "").trim();
+    if (!text) throw new Error("Write something first.");
+    if (text.length > 5000) throw new Error("Keep scripts under 5,000 characters.");
+    if (!/^[A-Za-z0-9]{10,40}$/.test(String(d.voiceId))) throw new Error("Invalid voice.");
+    return { text, voiceId: d.voiceId };
+  })
+  .handler(async ({ data }) => {
+    const res = await fetch(`${ELEVEN}/v1/text-to-speech/${data.voiceId}?output_format=mp3_44100_128`, {
+      method: "POST",
+      headers: { "xi-api-key": elevenKey(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: data.text,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: { stability: 0.5, similarity_boost: 0.85, use_speaker_boost: true },
+      }),
+    });
+    if (!res.ok) throw await elevenFailure(res);
+    const buf = new Uint8Array(await res.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+    return { audio: btoa(bin), mime: "audio/mpeg" };
+  });
