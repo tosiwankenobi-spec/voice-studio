@@ -9,12 +9,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { saveClip } from "@/lib/library";
 import { Timeline, type TimelineApi } from "@/components/Timeline";
 import { VoicePreview } from "@/components/VoicePreview";
+import { VoiceConsent } from "@/components/VoiceConsent";
+import { AISignIn } from "@/components/AISignIn";
+import { audioExtension } from "@/lib/studio-validation";
 import { createVoice, listVoices } from "@/lib/voices";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { deletedTimelineWords, isPureDeletion, type Word } from "@/lib/audio";
 import { SiteHeader } from "@/components/SiteHeader";
-import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
+import { askClaude, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
 export const Route = createFileRoute("/editor")({
   head: () => ({
@@ -63,7 +66,7 @@ function Editor() {
   const [voice, setVoice] = useState<string>("Kore");
   const [busy, setBusy] = useState<"upload" | "speak" | "clean" | null>(null);
   const [result, setResult] = useState<string | null>(null);
-  const clone = useServerFn(cloneMyVoice);
+  const [consent, setConsent] = useState(false);
   const speakMine = useServerFn(speakWithMyVoice);
   const [file, setFile] = useState<File | null>(null);
   const [myVoiceId, setMyVoiceId] = useState<string | null>(null);
@@ -77,6 +80,7 @@ function Editor() {
   const recRef = useRef<{ rec: MediaRecorder; stream: MediaStream; timer: number } | null>(null);
 
   async function startRecording() {
+    if (!user) { toast.error("Sign in to record and transcribe."); return; }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
@@ -123,6 +127,7 @@ function Editor() {
   );
 
   async function onFile(file: File) {
+    if (!user) { toast.error("Sign in to transcribe recordings."); return; }
     if (file.size > 25 * 1024 * 1024) {
       toast.error("Recordings must be under 25 MB.");
       return;
@@ -131,6 +136,7 @@ function Editor() {
     setResult(null);
     setFile(file);
     setMyVoiceId(null);
+    setConsent(false);
     setVoice(MINE);
     setBusy("upload");
     setWords([]);
@@ -151,6 +157,7 @@ function Editor() {
   }
 
   async function cleanUp() {
+    if (!user) { toast.error("Sign in to use AI tools."); return; }
     setBusy("clean");
     try {
       const r = await claude({
@@ -165,6 +172,8 @@ function Editor() {
   }
 
   async function respeak() {
+    if (!user) { toast.error("Sign in to re-speak recordings."); return; }
+    if (voice === MINE && !myVoiceId && !consent) { toast.error("Confirm you have permission to copy this voice."); return; }
     setBusy("speak");
     try {
       let r;
@@ -176,15 +185,9 @@ function Editor() {
         let id = myVoiceId;
         if (!id) {
           setStatus("Learning your voice…");
-          if (user) {
-            id = (await createVoice(file, file.name.replace(/\.[^.]+$/, ""))).voiceId;
-            qc.invalidateQueries({ queryKey: ["voices"] });
-            toast.success("Voice saved to My Voices — rename it there.");
-          } else {
-            const fd = new FormData();
-            fd.append("file", file);
-            id = (await clone({ data: fd })).voiceId;
-          }
+          id = (await createVoice(file, file.name.replace(/\.[^.]+$/, ""), consent)).voiceId;
+          qc.invalidateQueries({ queryKey: ["voices"] });
+          toast.success("Voice saved to My Voices — rename it there.");
           setMyVoiceId(id);
         }
         setStatus("Speaking in your voice…");
@@ -215,6 +218,7 @@ function Editor() {
           Edit audio <span className="text-primary">like a document.</span>
         </h1>
         <p className="mt-2 text-muted-foreground">Upload a recording, fix the words, and re-speak it.</p>
+        {!user && <AISignIn />}
 
         <input
           ref={input}
@@ -226,14 +230,14 @@ function Editor() {
 
         {!original ? (
           <>
-          <button
+          <Button variant="outline" disabled={!user}
             onClick={() => input.current?.click()}
             className="mt-8 flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed bg-card p-16 text-muted-foreground hover:border-primary hover:text-foreground"
           >
             <Upload className="h-10 w-10 text-primary" />
             <span className="font-display text-xl font-bold text-foreground">Upload a recording</span>
             <span className="text-sm">Audio or video, up to 25 MB</span>
-          </button>
+          </Button>
           <div className="mt-4 flex items-center justify-center gap-3 text-sm text-muted-foreground">or {recButton}</div>
           </>
         ) : (
@@ -306,6 +310,7 @@ function Editor() {
                 >
                   <Mic className="h-4 w-4" /> My real voice{myVoiceId ? " ✓" : ""}
                 </Button>
+                {voice === MINE && !myVoiceId && <VoiceConsent checked={consent} onChange={setConsent} />}
                 {user && (saved.data?.length ?? 0) > 0 && (
                   <div className="mt-4">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -313,7 +318,7 @@ function Editor() {
                       <Link to="/voices" className="hover:text-foreground">Manage</Link>
                     </div>
                     <div className="mt-2 flex flex-col gap-2">
-                      {saved.data!.map((v) => (
+                      {saved.data?.map((v) => (
                         <Button key={v.id} size="sm" variant={voice === `saved:${v.id}` ? "default" : "outline"} onClick={() => setVoice(`saved:${v.id}`)} className="justify-start">
                           <Mic className="h-4 w-4" /> {v.name}
                         </Button>
@@ -330,7 +335,7 @@ function Editor() {
                     </Button>
                   ))}
                 </div>
-                <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !text.trim()} onClick={respeak}>
+                <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !text.trim() || !user || (voice === MINE && !myVoiceId && !consent)} onClick={respeak}>
                   {busy === "speak" ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
                   {status || "Re-speak edited text"}
                 </Button>
@@ -338,7 +343,7 @@ function Editor() {
                   <div className="mt-4 rounded-xl bg-muted p-3">
                     <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                       <span>Edited version · {savedVoice?.name ?? (voice === MINE ? "Your voice" : voice)}</span>
-                      <a href={result} download="vocalis-edit.wav" aria-label="Download">
+                      <a href={result} download={`vocalis-edit.${audioExtension(result.slice(5, result.indexOf(";")))}`} aria-label="Download">
                         <Download className="h-4 w-4 hover:text-primary" />
                       </a>
                     </div>
