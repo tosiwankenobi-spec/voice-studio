@@ -24,3 +24,8 @@
 - Talking avatars use a shared canvas renderer and decoded-audio energy on the audio clock for preview/export; this is stylized mouth animation, not photographic phoneme lip-sync.
 - Browser cleanup renders the current timeline into a new buffer and remaps words, with buffer snapshots for undo; DSP and detections stay pure in lib for regression tests.
 - All stock and cloned speech load the authenticated user's pronunciation dictionary inside their server handlers; single-pass whole-term replacement keeps scripts unchanged and avoids cascading spellings.
+- Credit prices, the monthly allowance and free-preview limits live only in `src/lib/costs.ts`; UI cost hints and `/usage` read from there.
+- Server-side fetches of user-supplied URLs must go through `safeFetch` in `src/lib/product.server.ts` (SSRF protection). Never call `fetch` on a user URL directly.
+- Server-only modules (`*.server.ts`) are imported dynamically inside server-function handlers (`await import("./x.server")`), never at the top of a file the browser also loads.
+- Copying a voice requires spoken consent (`consent_audio` + `consent_name`, checked by `consentMatches`); don't add a clone path that skips it.
+- Video exports go through `exportVideo` in `src/lib/video-export.ts` (formats, captions, brand kit, AI label); reuse `useExportOptions` for the UI.
