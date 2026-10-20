@@ -106,6 +106,30 @@ export type Database = {
         }
         Relationships: []
       }
+      usage_events: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          units: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          units?: number
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          units?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       voices: {
         Row: {
           created_at: string
