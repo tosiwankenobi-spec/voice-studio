@@ -41,8 +41,10 @@ export const generateSpeech = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const style = [data.style, data.delivery ? deliveryPrompt(data.delivery) : ''].filter(Boolean).join('. ');
-    const spoken = style ? `${style}: ${data.text}` : data.text;
-    await recordAIUsage(context, "tts", spoken.length);
+    await recordAIUsage(context, "tts", (style ? `${style}: ${data.text}` : data.text).length);
+    const { spokenPronunciation } = await import('./pronunciation.server');
+    const pronounced = await spokenPronunciation(context.supabase, context.userId, data.text);
+    const spoken = style ? `${style}: ${pronounced}` : pronounced;
     const res = await fetch(`${GATEWAY}/v1/audio/speech`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
@@ -298,11 +300,13 @@ export const speakWithMyVoice = createServerFn({ method: "POST" })
       .eq("eleven_voice_id", data.voiceId).eq("user_id", context.userId).maybeSingle();
     if (error || !owned) throw new Error("Choose one of your saved voices.");
     await recordAIUsage(context, "cloned_tts", data.text.length);
+    const { spokenPronunciation } = await import('./pronunciation.server');
+    const pronounced = await spokenPronunciation(context.supabase, context.userId, data.text);
     const res = await fetch(`${ELEVEN}/v1/text-to-speech/${data.voiceId}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "xi-api-key": elevenKey(), "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: data.delivery ? elevenText(data.text, data.delivery) : data.text,
+        text: data.delivery ? elevenText(pronounced, data.delivery) : pronounced,
         model_id: "eleven_multilingual_v2",
         voice_settings: { stability: 0.5, similarity_boost: 0.85, use_speaker_boost: true, ...(data.delivery ? { speed: deliverySpeed(data.delivery) } : {}) },
       }),
