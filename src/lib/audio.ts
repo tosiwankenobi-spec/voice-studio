@@ -1,4 +1,4 @@
-export type Segment = { id: string; start: number; end: number };
+export type Segment = { id: string; start: number; end: number; patchId?: string };
 
 export const segLen = (s: Segment) => s.end - s.start;
 export const totalLength = (segs: Segment[]) => segs.reduce((a, s) => a + segLen(s), 0);
@@ -7,7 +7,8 @@ export const totalLength = (segs: Segment[]) => segs.reduce((a, s) => a + segLen
 export function locate(segs: Segment[], t: number) {
   let acc = 0;
   for (let i = 0; i < segs.length; i++) {
-    const s = segs[i]!;
+    const s = segs[i];
+    if (!s) continue;
     const len = segLen(s);
     if (t < acc + len || i === segs.length - 1) return { index: i, offset: Math.min(Math.max(t - acc, 0), len), startAt: acc };
     acc += len;
@@ -19,11 +20,12 @@ export function locate(segs: Segment[], t: number) {
 export function splitAt(segs: Segment[], t: number, makeId: () => string): Segment[] {
   const hit = locate(segs, t);
   if (!hit) return segs;
-  const s = segs[hit.index]!;
+  const s = segs[hit.index];
+  if (!s) return segs;
   if (hit.offset < 0.05 || segLen(s) - hit.offset < 0.05) return segs;
   const cut = s.start + hit.offset;
   const out = segs.slice();
-  out.splice(hit.index, 1, { id: makeId(), start: s.start, end: cut }, { id: makeId(), start: cut, end: s.end });
+  out.splice(hit.index, 1, { ...s, id: makeId(), start: s.start, end: cut }, { ...s, id: makeId(), start: cut, end: s.end });
   return out;
 }
 
@@ -31,7 +33,8 @@ export function move(segs: Segment[], from: number, to: number): Segment[] {
   if (from === to || to < 0 || to >= segs.length) return segs;
   const out = segs.slice();
   const [item] = out.splice(from, 1);
-  out.splice(to, 0, item!);
+  if (!item) return segs;
+  out.splice(to, 0, item);
   return out;
 }
 
@@ -80,7 +83,7 @@ export function encodeWav(buf: AudioBuffer): Blob {
 }
 
 /** A transcribed word, timed in seconds of the ORIGINAL recording. */
-export type Word = { w: string; s: number; e: number };
+export type Word = { w: string; s: number; e: number; patchId?: string };
 
 /** Convert timeline time to original-recording time. */
 export function toSource(segs: Segment[], t: number) {
@@ -140,8 +143,8 @@ export function cutSource(segs: Segment[], a: number, b: number, makeId: () => s
   const out: Segment[] = [];
   for (const s of segs) {
     if (b <= s.start || a >= s.end) { out.push(s); continue; }
-    if (a - s.start > 0.01) out.push({ id: makeId(), start: s.start, end: a });
-    if (s.end - b > 0.01) out.push({ id: makeId(), start: b, end: s.end });
+    if (a - s.start > 0.01) out.push({ ...s, id: makeId(), start: s.start, end: a });
+    if (s.end - b > 0.01) out.push({ ...s, id: makeId(), start: b, end: s.end });
   }
   return out;
 }
@@ -170,7 +173,7 @@ const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
 const tokens = (t: string) => t.split(/\s+/).map(norm).filter(Boolean);
 
 /** Pairs of matching positions (i in a, j in b) from a longest common subsequence. */
-function lcsPairs(a: string[], b: string[]) {
+export function lcsPairs(a: string[], b: string[]) {
   const n = a.length, m = b.length;
   const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
   for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)

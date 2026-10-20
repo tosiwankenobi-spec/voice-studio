@@ -4,6 +4,7 @@ import { requireVoiceConsent } from "@/lib/studio-validation";
 import { recordAIUsage, UsageLimitError } from "@/lib/usage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { deliverySettings, deliveryPrompt, deliverySpeed, elevenText, type Delivery } from '@/lib/take-delivery';
 
 const GATEWAY = "https://ai.gateway.lovable.dev";
 const TTS_MODEL = "google/gemini-3.1-flash-tts-preview";
@@ -31,15 +32,16 @@ async function failure(res: Response) {
 
 export const generateSpeech = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { text: string; voice: string; style?: string }) => {
+  .inputValidator((d: { text: string; voice: string; style?: string; delivery?: Partial<Delivery> }) => {
     const text = String(d.text ?? "").trim();
     if (!text) throw new Error("Write something first.");
     if (text.length > 5000) throw new Error("Keep scripts under 5,000 characters.");
     const voice = (VOICES as readonly string[]).includes(d.voice) ? d.voice : "Kore";
-    return { text, voice, style: String(d.style ?? "").slice(0, 200) };
+    return { text, voice, style: String(d.style ?? "").slice(0, 200), delivery: d.delivery ? deliverySettings(d.delivery) : null };
   })
   .handler(async ({ data, context }) => {
-    const spoken = data.style ? `${data.style}: ${data.text}` : data.text;
+    const style = [data.style, data.delivery ? deliveryPrompt(data.delivery) : ''].filter(Boolean).join('. ');
+    const spoken = style ? `${style}: ${data.text}` : data.text;
     await recordAIUsage(context, "tts", spoken.length);
     const res = await fetch(`${GATEWAY}/v1/audio/speech`, {
       method: "POST",
@@ -284,12 +286,12 @@ export const cloneMyVoice = createServerFn({ method: "POST" })
 
 export const speakWithMyVoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { text: string; voiceId: string }) => {
+  .inputValidator((d: { text: string; voiceId: string; delivery?: Partial<Delivery> }) => {
     const text = String(d.text ?? "").trim();
     if (!text) throw new Error("Write something first.");
     if (text.length > 5000) throw new Error("Keep scripts under 5,000 characters.");
     if (!/^[A-Za-z0-9]{10,40}$/.test(String(d.voiceId))) throw new Error("Invalid voice.");
-    return { text, voiceId: d.voiceId };
+    return { text, voiceId: d.voiceId, delivery: d.delivery ? deliverySettings(d.delivery) : null };
   })
   .handler(async ({ data, context }) => {
     const { data: owned, error } = await context.supabase.from("voices").select("id")
@@ -300,9 +302,9 @@ export const speakWithMyVoice = createServerFn({ method: "POST" })
       method: "POST",
       headers: { "xi-api-key": elevenKey(), "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: data.text,
+        text: data.delivery ? elevenText(data.text, data.delivery) : data.text,
         model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.5, similarity_boost: 0.85, use_speaker_boost: true },
+        voice_settings: { stability: 0.5, similarity_boost: 0.85, use_speaker_boost: true, ...(data.delivery ? { speed: deliverySpeed(data.delivery) } : {}) },
       }),
     });
     if (!res.ok) throw await elevenFailure(res);

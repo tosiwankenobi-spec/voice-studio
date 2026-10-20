@@ -16,6 +16,7 @@ import { createVoice, listVoices } from "@/lib/voices";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { deletedTimelineWords, isPureDeletion, type Word } from "@/lib/audio";
+import { changedSpan, alignTranscriptWords } from '@/lib/patch';
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
@@ -57,14 +58,12 @@ function Editor() {
       if (ks.length) {
         if (!api.cutPlaced(ks)) return; // refused (would cut everything)
         synced.current = next;
-      } else if (!isPureDeletion(synced.current, next)) {
-        syncTimer.current = setTimeout(() => (synced.current = next), 2000); // a rewrite: accept once typing pauses
-      } else synced.current = next;
+      } else if (isPureDeletion(synced.current, next)) synced.current = next;
     } else synced.current = next;
     setText(next);
   };
   const [voice, setVoice] = useState<string>("Kore");
-  const [busy, setBusy] = useState<"upload" | "speak" | "clean" | null>(null);
+  const [busy, setBusy] = useState<"upload" | "speak" | "clean" | "patch" | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [consent, setConsent] = useState(false);
   const speakMine = useServerFn(speakWithMyVoice);
@@ -144,8 +143,10 @@ function Editor() {
       const fd = new FormData();
       fd.append("file", file);
       const audio = new AudioContext();
+      let duration = 0;
       try {
         const decoded = await audio.decodeAudioData(await file.arrayBuffer());
+        duration = decoded.duration;
         fd.append("seconds", String(decoded.duration));
       } catch {
         // Some video containers cannot be decoded here; zero means unknown, not free usage.
@@ -157,7 +158,7 @@ function Editor() {
       setTranscript(r.text);
       setText(r.text);
       synced.current = r.text;
-      setWords(r.words);
+      setWords(duration ? alignTranscriptWords(r.text, r.words, duration) : r.words);
       if (!r.words.length) toast.message("Word timings unavailable — splits will cut at the exact playhead.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Transcription failed");
@@ -181,15 +182,19 @@ function Editor() {
     }
   }
 
-  async function respeak() {
+  async function respeak(patchOnly = false) {
     if (!user) { toast.error("Sign in to re-speak recordings."); return; }
     if (voice === MINE && !myVoiceId && !consent) { toast.error("Confirm you have permission to copy this voice."); return; }
-    setBusy("speak");
+    const before = synced.current;
+    const span = patchOnly ? changedSpan(before, text) : null;
+    if (patchOnly && !span) { toast.error('Rewrite or add a word first.'); return; }
+    const spokenText = span?.phrase ?? text;
+    setBusy(patchOnly ? "patch" : "speak");
     try {
       let r;
       if (savedVoice) {
         setStatus(`Speaking as ${savedVoice.name}…`);
-        r = await speakMine({ data: { text, voiceId: savedVoice.eleven_voice_id } });
+        r = await speakMine({ data: { text: spokenText, voiceId: savedVoice.eleven_voice_id } });
       } else if (voice === MINE) {
         if (!file) throw new Error("Upload a recording first.");
         let id = myVoiceId;
@@ -201,11 +206,20 @@ function Editor() {
           setMyVoiceId(id);
         }
         setStatus("Speaking in your voice…");
-        r = await speakMine({ data: { text, voiceId: id } });
+        r = await speakMine({ data: { text: spokenText, voiceId: id } });
       } else {
-        r = await speak({ data: { text, voice } });
+        r = await speak({ data: { text: spokenText, voice } });
       }
       const url = `data:${r.mime};base64,${r.audio}`;
+      if (patchOnly) {
+        const api = tlApi.current;
+        if (!api) throw new Error('Wait for the timeline to load.');
+        setStatus('Matching and joining the patch…');
+        await api.patch(before, text, url);
+        synced.current = text;
+        toast.success('Changed words patched');
+        return;
+      }
       setResult(url);
       if (user) {
         saveClip({ dataUrl: url, voice: savedVoice?.name ?? (voice === MINE ? "Your voice" : voice), text })
@@ -258,6 +272,7 @@ function Editor() {
                 file={file}
                 words={words}
                 apiRef={tlApi}
+                onTranscriptSync={(next) => { synced.current = next; setText(next); }}
                 onSave={user ? (blob) => {
                   saveClip({ dataUrl: URL.createObjectURL(blob), voice: "Edited recording", text: text || original.name })
                     .then(() => toast.success("Edit saved to your library"))
@@ -275,7 +290,7 @@ function Editor() {
                     {busy === "clean" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     Remove filler words
                   </Button>
-                  <Button size="sm" variant="ghost" disabled={!!busy || text === transcript} onClick={() => { setText(transcript); synced.current = transcript; }}>
+                  <Button size="sm" variant="ghost" disabled={!!busy || text === synced.current} onClick={() => setText(synced.current)}>
                     <RotateCcw className="h-4 w-4" /> Reset
                   </Button>
                 </div>
@@ -293,7 +308,7 @@ function Editor() {
                 />
               )}
               <p className="mt-2 text-xs text-muted-foreground">
-                {words.length ? "Deleting words here cuts them from the recording too. Rewrite or add words, then re-speak." : "Delete, rewrite or add words — then re-speak."}
+                {busy === 'patch' ? status || 'Generating changed words…' : ''}
               </p>
             </section>
 
@@ -345,9 +360,12 @@ function Editor() {
                     </Button>
                   ))}
                 </div>
-                <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !text.trim() || !user || (voice === MINE && !myVoiceId && !consent)} onClick={respeak}>
+                <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !words.length || !changedSpan(synced.current, text) || !user || (voice === MINE && !myVoiceId && !consent)} onClick={() => respeak(true)}>
+                  {busy === 'patch' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Patch changed words
+                </Button>
+                <Button variant="outline" className="mt-3 w-full" size="lg" disabled={!!busy || !text.trim() || !user || (voice === MINE && !myVoiceId && !consent)} onClick={() => respeak()}>
                   {busy === "speak" ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
-                  {status || "Re-speak edited text"}
+                  {(busy === 'speak' && status) || "Re-speak everything"}
                 </Button>
                 {result && (
                   <div className="mt-4 rounded-xl bg-muted p-3">

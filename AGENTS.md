@@ -18,3 +18,6 @@
 - Audio download extensions derive from the returned MIME type so filenames match the encoded content.
 - Paid provider calls reserve usage through the shared server-only usage helper using the authenticated RLS client; fail closed on tracking errors, count attempts (including timing fallbacks), and exclude video polling/deletion because they do not start paid generation. This keeps a single limiter and avoids untracked spending.
 - Usage units are integer estimates: TTS input characters, requested video seconds, browser-decoded transcription seconds (zero if absent from legacy callers), and one for text/image/clone requests; reservations are not actual provider bills.
+- Patch DSP and LCS span mapping live in pure lib helpers; Timeline appends processed patch samples to its source buffer and stores segment/word snapshots, preserving source mappings and individually reversible replacements.
+- Script takes are browser-written private Cloud rows and clips objects; delivery is validated by shared pure helpers and paid generation uses the existing authenticated speech functions, preserving the shared usage gate.
+- Chosen-take export decodes and trims each take then joins with exact silence locally; a row-locking database trigger enforces take capacity and a partial unique index enforces one chosen take per line.

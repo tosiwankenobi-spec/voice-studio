@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ signedIn: false, registered: false, insertFails: false }));
+const state = vi.hoisted(() => ({ signedIn: false, registered: false, insertFails: false, ownsVoice: false }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: "auth" }));
 vi.mock("@/lib/usage", () => ({ recordAIUsage: vi.fn(), UsageLimitError: class extends Error {} }));
 vi.mock("@tanstack/react-start", () => ({
@@ -18,7 +18,7 @@ vi.mock("@tanstack/react-start", () => ({
             state.registered = !state.insertFails;
             return state.insertFails ? { error: new Error("Save failed"), data: null } : { data: { id: "saved-id" }, error: null };
           } }) }),
-          select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+          select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.ownsVoice ? { id: 'owned' } : null, error: null }) }) }) }),
         }) };
         return fn({ data: validate(opts.data), context: { userId: "owner", supabase } });
       },
@@ -38,6 +38,7 @@ beforeEach(() => {
   state.signedIn = false;
   state.registered = false;
   state.insertFails = false;
+  state.ownsVoice = false;
   vi.stubEnv("ELEVENLABS_API_KEY", "test-only");
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ voice_id: "testVoice12345" }), { status: 200 })));
 });
@@ -111,5 +112,31 @@ describe("Paid call usage gates", () => {
     vi.mocked(recordAIUsage).mockRejectedValueOnce(new Error("60 AI calls in 10 minutes"));
     await expect(call()).rejects.toThrow("60 AI calls");
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('Take generation', () => {
+  it('sends saved-voice take speed, stress and break settings and reserves its usage', async () => {
+    state.signedIn = true; state.ownsVoice = true;
+    await speakWithMyVoice({ data: { text: 'Hello friend.', voiceId: 'testVoice12345', delivery: { pace: 'faster', emphasis: 'friend', pause: 0.5 } } });
+    const request = vi.mocked(fetch).mock.calls[0];
+    const body = JSON.parse(String(request?.[1]?.body));
+    expect(body.text).toBe('Hello FRIEND.<break time="0.5s"/>');
+    expect(body.voice_settings.speed).toBe(1.15);
+    expect(recordAIUsage).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner' }), 'cloned_tts', 13);
+  });
+  it('reserves usage for every generated stock take with delivery controls', async () => {
+    state.signedIn = true;
+    vi.stubEnv('LOVABLE_API_KEY', 'test-only');
+    await generateSpeech({ data: { text: 'Hello friend', voice: 'Kore', delivery: { pace: 'slower', emphasis: 'friend', pause: 0.5 } } });
+    expect(recordAIUsage).toHaveBeenCalledTimes(1);
+    expect(recordAIUsage).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner' }), 'tts', expect.any(Number));
+    const call = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(String(call?.[1]?.body)).contents[0].parts[0].text).toContain('stressing the word "friend"');
+  });
+  it('rejects unsupported pauses before spending', async () => {
+    state.signedIn = true;
+    await expect(generateSpeech({ data: { text: 'Hello', voice: 'Kore', delivery: { pause: 0.75 } } })).rejects.toThrow('pause');
+    expect(recordAIUsage).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
   });
 });
