@@ -93,7 +93,7 @@ export async function exportVideo(scenes: RenderScene[], onProgress: (i: number)
   rec.stop();
   await done;
   await ac.close();
-  return new Blob(chunks, { type: mime.split(";")[0] });
+  return new Blob(chunks, { type: mime.split(";")[0] ?? "video/webm" });
 }
 
 export function audioSeconds(src: string) {
