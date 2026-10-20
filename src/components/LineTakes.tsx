@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useServerFn } from '@tanstack/react-start';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Download, Loader2, Save, Trash2, AudioLines } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ export function LineTakes({ text, scriptId, ensureScript, voice, style, signedIn
   signedIn: boolean; disabled: boolean; onVoiceChange: (voice: string) => void;
 }) {
   const stock = useServerFn(generateSpeech), cloned = useServerFn(speakWithMyVoice);
+  const queryClient = useQueryClient();
   const voices = useQuery({ queryKey: ['voices'], queryFn: listVoices, enabled: signedIn });
   const [takes, setTakes] = useState<ScriptTake[]>([]);
   const [settings, setSettings] = useState<Record<string, Delivery>>({});
@@ -45,7 +46,7 @@ export function LineTakes({ text, scriptId, ensureScript, voice, style, signedIn
         return restored;
       });
     }).catch(e => { if (!cancelled) toast.error(e instanceof Error ? e.message : 'Could not load takes.'); })
-      .finally(() => { if (!cancelled) setBusy(null); });
+      .finally(() => { if (!cancelled && !active.current) setBusy(null); });
     return () => { cancelled = true; };
   }, [scriptId, signedIn]);
   useEffect(() => { setFinalUrl(null); }, [text, takes]);
@@ -99,7 +100,7 @@ export function LineTakes({ text, scriptId, ensureScript, voice, style, signedIn
       const blob = await exportTakes(ordered);
       const url = URL.createObjectURL(blob);
       setFinalUrl(url);
-      if (save) { await saveClip({ dataUrl: url, voice: 'Chosen takes', text, scriptId }); toast.success('Joined takes saved to your library'); }
+      if (save) { await saveClip({ dataUrl: url, voice: 'Chosen takes', text, scriptId }); queryClient.invalidateQueries({ queryKey: ['library'] }); toast.success('Joined takes saved to your library'); }
       else { const a = document.createElement('a'); a.href = url; a.download = 'vocalis-chosen-takes.wav'; a.click(); }
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not join takes.'); }
     finally { active.current = false; setBusy(null); setStatus(''); }

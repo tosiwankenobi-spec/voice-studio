@@ -9,6 +9,11 @@ const base: Segment[] = [
 ];
 
 describe("timeline edits", () => {
+  it('keeps patch identity after splitting or cutting a patched region', () => {
+    const patch = [{ id: 'patch', start: 0, end: 4, patchId: 'p1' }];
+    expect(splitAt(patch, 2, id).map(s => s.patchId)).toEqual(['p1', 'p1']);
+    expect(cutSource(patch, 1, 2, id).map(s => s.patchId)).toEqual(['p1', 'p1']);
+  });
   it("splitting keeps total length and cuts at the playhead", () => {
     const out = splitAt(base, 1.5, id);
     expect(out).toHaveLength(3);
