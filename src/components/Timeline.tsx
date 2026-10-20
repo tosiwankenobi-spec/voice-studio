@@ -31,7 +31,9 @@ function Waveform({ buffer, seg }: { buffer: AudioBuffer; seg: Segment }) {
   return <canvas ref={ref} className="h-full w-full text-primary" />;
 }
 
-export function Timeline({ file, words = [], onSave }: { file: File; words?: Word[]; onSave?: ((blob: Blob) => void) | undefined }) {
+export type TimelineApi = { timelineWords: () => string[]; cutPlaced: (ks: number[]) => boolean };
+
+export function Timeline({ file, words = [], onSave, apiRef }: { file: File; words?: Word[]; onSave?: ((blob: Blob) => void) | undefined; apiRef?: React.MutableRefObject<TimelineApi | null> }) {
   const ctxRef = useRef<AudioContext | null>(null);
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [segs, setSegs] = useState<Segment[]>([]);
@@ -133,12 +135,10 @@ export function Timeline({ file, words = [], onSave }: { file: File; words?: Wor
 
   const split = () =>
     commit(words.length && buffer ? splitAtWord(segs, playhead, words, uid, (t) => quietestNear(buffer, t)) : splitAt(segs, playhead, uid));
-  const cutWords = () => {
-    if (!picked || !buffer) return;
-    const lo = Math.min(picked.from, picked.to);
-    const hi = Math.max(picked.from, picked.to);
+  const cutPlaced = (ks: number[]) => {
+    if (!buffer || !ks.length) return false;
     let next = segs;
-    for (let k = lo; k <= hi; k++) {
+    for (const k of ks) {
       const p = placed[k];
       if (!p) continue;
       const { a, b } = wordRange(words, p.i);
@@ -146,10 +146,18 @@ export function Timeline({ file, words = [], onSave }: { file: File; words?: Wor
       const qb = p.i === words.length - 1 ? b : quietestNear(buffer, b, 0.15);
       next = cutSource(next, Math.min(qa, words[p.i]!.s), Math.max(qb, words[p.i]!.e), uid);
     }
-    if (!next.length) { toast.error("You can't cut every word."); return; }
+    if (!next.length) { toast.error("You can't cut every word."); return false; }
     commit(next);
     setPicked(null);
+    return true;
   };
+  const cutWords = () => {
+    if (!picked) return;
+    const lo = Math.min(picked.from, picked.to);
+    const hi = Math.max(picked.from, picked.to);
+    cutPlaced(Array.from({ length: hi - lo + 1 }, (_, n) => lo + n));
+  };
+  if (apiRef) apiRef.current = { timelineWords: () => placed.map((p) => words[p.i]!.w), cutPlaced };
   const pickWord = (k: number, extend: boolean) => {
     setPicked((cur) => (extend && cur ? { from: cur.from, to: k } : { from: k, to: k }));
     const at = placed[k]?.at ?? 0;

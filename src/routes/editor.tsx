@@ -41,6 +41,15 @@ function Editor() {
   const [transcript, setTranscript] = useState("");
   const [words, setWords] = useState<Word[]>([]);
   const [text, setText] = useState("");
+  const tlApi = useRef<TimelineApi | null>(null);
+  const onTextChange = (next: string) => {
+    const api = tlApi.current;
+    if (api && words.length) {
+      const ks = deletedTimelineWords(text, next, api.timelineWords());
+      if (ks.length && !api.cutPlaced(ks)) return; // refused (would cut everything)
+    }
+    setText(next);
+  };
   const [voice, setVoice] = useState<string>("Kore");
   const [busy, setBusy] = useState<"upload" | "speak" | "clean" | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -223,6 +232,7 @@ function Editor() {
               <Timeline
                 file={file}
                 words={words}
+                apiRef={tlApi}
                 onSave={user ? (blob) => {
                   saveClip({ dataUrl: URL.createObjectURL(blob), voice: "Edited recording", text: text || original.name })
                     .then(() => toast.success("Edit saved to your library"))
@@ -252,12 +262,14 @@ function Editor() {
               ) : (
                 <Textarea
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => onTextChange(e.target.value)}
                   className="mt-4 min-h-[320px] border-0 bg-muted text-lg leading-relaxed"
                   maxLength={5000}
                 />
               )}
-              <p className="mt-2 text-xs text-muted-foreground">Delete, rewrite or add words — then re-speak.</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {words.length ? "Deleting words here cuts them from the recording too. Rewrite or add words, then re-speak." : "Delete, rewrite or add words — then re-speak."}
+              </p>
             </section>
 
             <aside className="flex flex-col gap-6">
