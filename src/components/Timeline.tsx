@@ -4,6 +4,8 @@ import { Pause, Play, Scissors, Trash2, Undo2, Download, ChevronLeft, ChevronRig
 import { Button } from "@/components/ui/button";
 import { cutSource, encodeWav, locate, move, quietestNear, renderSegments, segLen, splitAt, splitAtWord, totalLength, wordRange, wordsOnTimeline, type Segment, type Word } from "@/lib/audio";
 import { changedSpan, patchRange, sliceTimeline, matchPatch } from '@/lib/patch';
+import { AudioCleanup, type CleanupOptions } from './AudioCleanup';
+import { pauseCuts, placedCleanupWords, reduceNoise, normalizeLoudness, integratedLoudness } from '@/lib/cleanup';
 
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 const uid = () => crypto.randomUUID();
@@ -15,7 +17,8 @@ function Waveform({ buffer, seg }: { buffer: AudioBuffer; seg: Segment }) {
     if (!c) return;
     const w = (c.width = c.clientWidth * devicePixelRatio);
     const h = (c.height = c.clientHeight * devicePixelRatio);
-    const g = c.getContext("2d")!;
+    const g = c.getContext("2d");
+    if (!g) return;
     g.clearRect(0, 0, w, h);
     g.fillStyle = getComputedStyle(c).color;
     const data = buffer.getChannelData(0);
@@ -34,7 +37,7 @@ function Waveform({ buffer, seg }: { buffer: AudioBuffer; seg: Segment }) {
 
 export type TimelineApi = { timelineWords: () => string[]; cutPlaced: (ks: number[]) => boolean; patch: (before: string, after: string, url: string) => Promise<void> };
 type PatchRecord = { id: string; phrase: string; replaced: Segment[]; removedWords: Word[] };
-type Snapshot = { segs: Segment[]; words: Word[]; patches: PatchRecord[] };
+type Snapshot = { segs: Segment[]; words: Word[]; patches: PatchRecord[]; buffer: AudioBuffer | null };
 
 export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTranscriptSync }: { file: File; words?: Word[]; onSave?: ((blob: Blob) => void) | undefined; apiRef?: RefObject<TimelineApi | null>; onTranscriptSync?: (text: string) => void }) {
   const ctxRef = useRef<AudioContext | null>(null);
@@ -52,6 +55,8 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
   const sources = useRef<AudioBufferSourceNode[]>([]);
   const clock = useRef({ ctxStart: 0, from: 0 });
   const raf = useRef(0);
+  const cleanupBefore = useRef<Snapshot | null>(null);
+  const [measured, setMeasured] = useState<number | null>(null);
 
   const total = useMemo(() => totalLength(segs), [segs]);
   const placed = useMemo(() => wordsOnTimeline(segs, words), [segs, words]);

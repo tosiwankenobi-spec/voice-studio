@@ -16,6 +16,7 @@ import { Route as EditorRouteImport } from './routes/editor'
 import { Route as ImagesRouteImport } from './routes/images'
 import { Route as VideoRouteImport } from './routes/video'
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
+import { Route as AuthenticatedPronunciationsRouteImport } from './routes/_authenticated/pronunciations'
 import { Route as AuthenticatedVoicesRouteImport } from './routes/_authenticated/voices'
 import { Route as ApiGenerateImageRouteImport } from './routes/api/generate-image'
 
@@ -53,6 +54,12 @@ const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
   path: '/library',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedPronunciationsRoute =
+  AuthenticatedPronunciationsRouteImport.update({
+    id: '/pronunciations',
+    path: '/pronunciations',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedVoicesRoute = AuthenticatedVoicesRouteImport.update({
   id: '/voices',
   path: '/voices',
@@ -71,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/images': typeof ImagesRoute
   '/video': typeof VideoRoute
   '/library': typeof AuthenticatedLibraryRoute
+  '/pronunciations': typeof AuthenticatedPronunciationsRoute
   '/voices': typeof AuthenticatedVoicesRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
@@ -81,6 +89,7 @@ export interface FileRoutesByTo {
   '/images': typeof ImagesRoute
   '/video': typeof VideoRoute
   '/library': typeof AuthenticatedLibraryRoute
+  '/pronunciations': typeof AuthenticatedPronunciationsRoute
   '/voices': typeof AuthenticatedVoicesRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
@@ -93,6 +102,7 @@ export interface FileRoutesById {
   '/images': typeof ImagesRoute
   '/video': typeof VideoRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
+  '/_authenticated/pronunciations': typeof AuthenticatedPronunciationsRoute
   '/_authenticated/voices': typeof AuthenticatedVoicesRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/video'
     | '/library'
+    | '/pronunciations'
     | '/voices'
     | '/api/generate-image'
   fileRoutesByTo: FileRoutesByTo
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/video'
     | '/library'
+    | '/pronunciations'
     | '/voices'
     | '/api/generate-image'
   id:
@@ -126,6 +138,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/video'
     | '/_authenticated/library'
+    | '/_authenticated/pronunciations'
     | '/_authenticated/voices'
     | '/api/generate-image'
   fileRoutesById: FileRoutesById
@@ -191,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLibraryRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/pronunciations': {
+      id: '/_authenticated/pronunciations'
+      path: '/pronunciations'
+      fullPath: '/pronunciations'
+      preLoaderRoute: typeof AuthenticatedPronunciationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/voices': {
       id: '/_authenticated/voices'
       path: '/voices'
@@ -210,11 +230,13 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedLibraryRoute: typeof AuthenticatedLibraryRoute
+  AuthenticatedPronunciationsRoute: typeof AuthenticatedPronunciationsRoute
   AuthenticatedVoicesRoute: typeof AuthenticatedVoicesRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedLibraryRoute: AuthenticatedLibraryRoute,
+  AuthenticatedPronunciationsRoute: AuthenticatedPronunciationsRoute,
   AuthenticatedVoicesRoute: AuthenticatedVoicesRoute,
 }
 
