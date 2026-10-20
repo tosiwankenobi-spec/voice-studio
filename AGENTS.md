@@ -21,3 +21,6 @@
 - Patch DSP and LCS span mapping live in pure lib helpers; Timeline appends processed patch samples to its source buffer and stores segment/word snapshots, preserving source mappings and individually reversible replacements.
 - Script takes are browser-written private Cloud rows and clips objects; delivery is validated by shared pure helpers and paid generation uses the existing authenticated speech functions, preserving the shared usage gate.
 - Chosen-take export decodes and trims each take then joins with exact silence locally; a row-locking database trigger enforces take capacity and a partial unique index enforces one chosen take per line.
+- Talking avatars use a shared canvas renderer and decoded-audio energy on the audio clock for preview/export; this is stylized mouth animation, not photographic phoneme lip-sync.
+- Browser cleanup renders the current timeline into a new buffer and remaps words, with buffer snapshots for undo; DSP and detections stay pure in lib for regression tests.
+- All stock and cloned speech load the authenticated user's pronunciation dictionary inside their server handlers; single-pass whole-term replacement keeps scripts unchanged and avoids cascading spellings.
