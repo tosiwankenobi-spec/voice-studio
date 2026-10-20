@@ -24,7 +24,7 @@ export function SiteHeader() {
         <AudioLines className="h-7 w-7 text-primary" />
         <span className="font-display text-2xl font-extrabold tracking-tight">Vocalis</span>
       </Link>
-      <nav className="flex items-center gap-1">
+      <nav className="-mx-2 flex max-w-full items-center gap-1 overflow-x-auto whitespace-nowrap px-2 [&>*]:shrink-0">
         <Link to="/" className={link} activeProps={active} activeOptions={{ exact: true }}>Voice Studio</Link>
         <Link to="/editor" className={link} activeProps={active}>Recording Editor</Link>
         <Link to="/video" className={link} activeProps={active}>Video Studio</Link>
