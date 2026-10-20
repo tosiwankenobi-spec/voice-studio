@@ -146,7 +146,7 @@ export function Timeline({ file, words = [], onSave }: { file: File; words?: Wor
       const qb = p.i === words.length - 1 ? b : quietestNear(buffer, b, 0.15);
       next = cutSource(next, Math.min(qa, words[p.i]!.s), Math.max(qb, words[p.i]!.e), uid);
     }
-    if (!next.length) return toast.error("You can't cut every word.");
+    if (!next.length) { toast.error("You can't cut every word."); return; }
     commit(next);
     setPicked(null);
   };
