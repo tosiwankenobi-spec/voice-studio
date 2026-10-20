@@ -301,8 +301,8 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
     const rendered = await renderSegments(buffer, next);
     const ctx = ctxRef.current;
     if (!ctx) throw new Error('Wait for the recording to load.');
-    const timed = placedCleanupWords(next, words).map(w => ({ ...w, patchId: undefined }));
-    let channels = Array.from({ length: rendered.numberOfChannels }, (_, k) => rendered.getChannelData(k));
+    const timed = placedCleanupWords(next, words).map(({ w, s, e }) => ({ w, s, e }));
+    let channels: Float32Array[] = Array.from({ length: rendered.numberOfChannels }, (_, k) => rendered.getChannelData(k));
     channels = reduceNoise(channels, rendered.sampleRate, options.noise);
     if (options.loudness !== null) channels = normalizeLoudness(channels, rendered.sampleRate, options.loudness);
     const output = ctx.createBuffer(channels.length, rendered.length, rendered.sampleRate);
@@ -324,7 +324,7 @@ export function Timeline({ file, words: inputWords = [], onSave, apiRef, onTrans
     if (!ctx || !buffer) return;
     await ctx.resume();
     const prior = cleanupBefore.current;
-    const output = original ? await renderSegments(prior?.buffer ?? buffer, prior?.segs ?? segs) : (await cleaned(options)).output;
+    const output = original ? await renderSegments(prior?.buffer ?? buffer, prior?.segs ?? segs) : prior ? await renderSegments(buffer, segs) : (await cleaned(options)).output;
     const src = ctx.createBufferSource(); src.buffer = output; src.connect(ctx.destination); src.start();
     sources.current.push(src); setPlaying(true); src.onended = () => stop();
   }
