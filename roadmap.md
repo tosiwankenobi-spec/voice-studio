@@ -12,6 +12,8 @@ Verification limits: live ElevenLabs cloning and MP3 generation were not exercis
 
 Usage verification: authenticated stock speech recorded 50 TTS characters and saved its clip, visible in My Library. Limit boundary and provider blocking are covered by regression tests; live saturation with 60 requests was not performed. Duration units are estimates; zero represents unknown duration. Provider failures also count, and timing fallbacks reserve separate calls.
 
-- [ ] Add changed-word patches with context, matching, highlights and individual undo.
-- [ ] Add sentence takes, delivery controls, chosen-take export and saved-script persistence.
-- [ ] Test audio maths, limits and authenticated editor/studio workflows.
+- [x] Add changed-word patches with context, matching, highlights and individual undo.
+- [x] Add sentence takes, delivery controls, chosen-take export and saved-script persistence.
+- [x] Test audio maths, limits and authenticated editor/studio workflows.
+
+Verification: 61 tests passed. Real signed-in Gemini takes generated, persisted and reopened; pace/emphasis/0.5-second pause and selected take survived reload; a fourth take was disabled. Joined audio saved and read back in My Library. Real joined WAV uploaded and transcribed; a fresh-to-tasty patch generated, highlighted and exported; individual undo restored the original full transcript and audio duration. Mobile checks showed no horizontal overflow. Live ElevenLabs delivery remains unverified because the linked account has no credits; provider request settings are regression-tested. Patch word positions within generated phrases are estimated locally; edits remain session-local until exporting/saving audio.
