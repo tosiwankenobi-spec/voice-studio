@@ -128,17 +128,86 @@ export const transcribeRecording = createServerFn({ method: "POST" })
     form.append("model", "openai/gpt-transcribe");
     form.append("file", data.file, data.file.name);
     form.append("response_format", "json");
-    const res = await fetch(`${GATEWAY}/v1/audio/transcriptions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key()}` },
-      body: form,
-    });
+    const [res, words] = await Promise.all([
+      fetch(`${GATEWAY}/v1/audio/transcriptions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key()}` },
+        body: form,
+      }),
+      wordTimings(data.file).catch((e) => {
+        console.error("word timings failed", e);
+        return [] as TimedWord[];
+      }),
+    ]);
     if (!res.ok) throw await failure(res);
     const j = (await res.json()) as { text?: string };
     const text = (j.text ?? "").trim();
     if (!text) throw new Error("No speech was found in that recording.");
-    return { text };
+    return { text, words };
   });
+
+type TimedWord = { w: string; s: number; e: number };
+
+function cleanWords(list: unknown): TimedWord[] {
+  if (!Array.isArray(list)) return [];
+  const out: TimedWord[] = [];
+  for (const x of list) {
+    const w = String(x?.w ?? x?.text ?? "").trim();
+    const s = Number(x?.s ?? x?.start);
+    const e = Number(x?.e ?? x?.end);
+    if (!w || !isFinite(s) || !isFinite(e) || e < s) continue;
+    const prev = out[out.length - 1];
+    out.push({ w, s: Math.max(s, prev?.e ?? 0), e: Math.max(e, prev?.e ?? 0) });
+  }
+  return out;
+}
+
+/** Times every spoken word. Uses ElevenLabs when the account has credits, otherwise an AI model. */
+async function wordTimings(file: File): Promise<TimedWord[]> {
+  const eleven = process.env["ELEVENLABS_API_KEY"];
+  if (eleven) {
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    fd.append("model_id", "scribe_v2");
+    const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": eleven }, body: fd });
+    if (r.ok) {
+      const j = (await r.json()) as { words?: { text: string; start: number; end: number; type?: string }[] };
+      const words = cleanWords((j.words ?? []).filter((w) => (w.type ?? "word") === "word"));
+      if (words.length) return words;
+    }
+  }
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  const format = ["wav", "mp3", "m4a", "ogg", "flac", "webm", "aac", "mp4"].includes(ext) ? ext : "mp3";
+  const res = await fetch(`${GATEWAY}/v1/chat/completions`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "google/gemini-3.8-flash",
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: 'Transcribe this recording verbatim, including filler words (um, uh), and time every word precisely to 0.01 seconds from the start of the file. Return ONLY JSON: {"words":[{"w":"word","s":start,"e":end}]}',
+            },
+            { type: "input_audio", input_audio: { data: btoa(bin), format } },
+          ],
+        },
+      ],
+    }),
+  });
+  if (!res.ok) throw await failure(res);
+  const j = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  const raw = j.choices?.[0]?.message?.content ?? "";
+  const start = raw.indexOf("{");
+  const parsed = JSON.parse(raw.slice(start, raw.lastIndexOf("}") + 1)) as { words?: unknown };
+  return cleanWords(parsed.words);
+}
 
 const ELEVEN = "https://api.elevenlabs.io";
 
