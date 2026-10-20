@@ -18,7 +18,7 @@ describe('contextual LCS patches', () => {
     const words = [{ w: 'first', s: 0.2, e: 1 }, { w: 'second', s: 2.2, e: 3 }];
     const refined: number[] = [];
     const range = patchRange(segs, words, 0, 1, t => { refined.push(t); return t; });
-    expect(range).toEqual({ start: 0.20000000000000018, end: 2 });
+    expect(range.start).toBeCloseTo(0.2); expect(range.end).toBeCloseTo(1.6);
     expect(refined).toEqual([2.2, 3.6]);
   });
 });

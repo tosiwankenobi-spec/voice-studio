@@ -66,8 +66,9 @@ function Studio() {
   // Open a saved script from the library
   useEffect(() => {
     if (!scriptParam || !user) return;
+    let cancelled = false;
     supabase.from("scripts").select("id, content").eq("id", scriptParam).maybeSingle().then(({ data }) => {
-      if (data) {
+      if (data && !cancelled) {
         loaded.current = true;
         setScriptId(data.id);
         scriptIdRef.current = data.id;
@@ -75,6 +76,7 @@ function Studio() {
         setSaveState("saved");
       }
     });
+    return () => { cancelled = true; };
   }, [scriptParam, user]);
 
   // Auto-save the script while signed in
