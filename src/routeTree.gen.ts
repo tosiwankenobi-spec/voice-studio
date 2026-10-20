@@ -13,6 +13,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as EditorRouteImport } from './routes/editor'
+import { Route as ImagesRouteImport } from './routes/images'
+import { Route as VideoRouteImport } from './routes/video'
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
 import { Route as ApiGenerateImageRouteImport } from './routes/api/generate-image'
 
@@ -35,6 +37,16 @@ const EditorRoute = EditorRouteImport.update({
   path: '/editor',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ImagesRoute = ImagesRouteImport.update({
+  id: '/images',
+  path: '/images',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VideoRoute = VideoRouteImport.update({
+  id: '/video',
+  path: '/video',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
   id: '/library',
   path: '/library',
@@ -50,6 +62,8 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/editor': typeof EditorRoute
+  '/images': typeof ImagesRoute
+  '/video': typeof VideoRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
@@ -57,6 +71,8 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/editor': typeof EditorRoute
+  '/images': typeof ImagesRoute
+  '/video': typeof VideoRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
@@ -66,20 +82,38 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/editor': typeof EditorRoute
+  '/images': typeof ImagesRoute
+  '/video': typeof VideoRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/editor' | '/library' | '/api/generate-image'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/editor'
+    | '/images'
+    | '/video'
+    | '/library'
+    | '/api/generate-image'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/editor' | '/library' | '/api/generate-image'
+  to:
+    | '/'
+    | '/auth'
+    | '/editor'
+    | '/images'
+    | '/video'
+    | '/library'
+    | '/api/generate-image'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
     | '/editor'
+    | '/images'
+    | '/video'
     | '/_authenticated/library'
     | '/api/generate-image'
   fileRoutesById: FileRoutesById
@@ -89,6 +123,8 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   EditorRoute: typeof EditorRoute
+  ImagesRoute: typeof ImagesRoute
+  VideoRoute: typeof VideoRoute
   ApiGenerateImageRoute: typeof ApiGenerateImageRoute
 }
 
@@ -120,6 +156,20 @@ declare module '@tanstack/react-router' {
       path: '/editor'
       fullPath: '/editor'
       preLoaderRoute: typeof EditorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/images': {
+      id: '/images'
+      path: '/images'
+      fullPath: '/images'
+      preLoaderRoute: typeof ImagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/video': {
+      id: '/video'
+      path: '/video'
+      fullPath: '/video'
+      preLoaderRoute: typeof VideoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/library': {
@@ -155,6 +205,8 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   EditorRoute: EditorRoute,
+  ImagesRoute: ImagesRoute,
+  VideoRoute: VideoRoute,
   ApiGenerateImageRoute: ApiGenerateImageRoute,
 }
 export const routeTree = rootRouteImport
