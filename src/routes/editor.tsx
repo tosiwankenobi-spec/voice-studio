@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { saveClip } from "@/lib/library";
-import { Timeline } from "@/components/Timeline";
+import { Timeline, type TimelineApi } from "@/components/Timeline";
 import { VoicePreview } from "@/components/VoicePreview";
 import { createVoice, listVoices } from "@/lib/voices";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { Word } from "@/lib/audio";
+import { deletedTimelineWords, isPureDeletion, type Word } from "@/lib/audio";
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
@@ -41,6 +41,25 @@ function Editor() {
   const [transcript, setTranscript] = useState("");
   const [words, setWords] = useState<Word[]>([]);
   const [text, setText] = useState("");
+  const tlApi = useRef<TimelineApi | null>(null);
+  // Last transcript state whose words are in sync with the audio. Partly-erased words don't count,
+  // so deleting a word letter by letter cuts it once it's fully gone.
+  const synced = useRef("");
+  const syncTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onTextChange = (next: string) => {
+    const api = tlApi.current;
+    clearTimeout(syncTimer.current);
+    if (api && words.length) {
+      const ks = deletedTimelineWords(synced.current, next, api.timelineWords());
+      if (ks.length) {
+        if (!api.cutPlaced(ks)) return; // refused (would cut everything)
+        synced.current = next;
+      } else if (!isPureDeletion(synced.current, next)) {
+        syncTimer.current = setTimeout(() => (synced.current = next), 2000); // a rewrite: accept once typing pauses
+      } else synced.current = next;
+    } else synced.current = next;
+    setText(next);
+  };
   const [voice, setVoice] = useState<string>("Kore");
   const [busy, setBusy] = useState<"upload" | "speak" | "clean" | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -121,6 +140,7 @@ function Editor() {
       const r = await transcribe({ data: fd });
       setTranscript(r.text);
       setText(r.text);
+      synced.current = r.text;
       setWords(r.words);
       if (!r.words.length) toast.message("Word timings unavailable — splits will cut at the exact playhead.");
     } catch (e) {
@@ -136,7 +156,7 @@ function Editor() {
       const r = await claude({
         data: { text, instruction: "Remove filler words (um, uh, like, you know), false starts and repeated words. Keep the speaker's wording and meaning otherwise unchanged." },
       });
-      setText(r.text);
+      onTextChange(r.text);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Claude failed");
     } finally {
@@ -223,6 +243,7 @@ function Editor() {
               <Timeline
                 file={file}
                 words={words}
+                apiRef={tlApi}
                 onSave={user ? (blob) => {
                   saveClip({ dataUrl: URL.createObjectURL(blob), voice: "Edited recording", text: text || original.name })
                     .then(() => toast.success("Edit saved to your library"))
@@ -240,7 +261,7 @@ function Editor() {
                     {busy === "clean" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                     Remove filler words
                   </Button>
-                  <Button size="sm" variant="ghost" disabled={!!busy || text === transcript} onClick={() => setText(transcript)}>
+                  <Button size="sm" variant="ghost" disabled={!!busy || text === transcript} onClick={() => { setText(transcript); synced.current = transcript; }}>
                     <RotateCcw className="h-4 w-4" /> Reset
                   </Button>
                 </div>
@@ -252,12 +273,14 @@ function Editor() {
               ) : (
                 <Textarea
                   value={text}
-                  onChange={(e) => setText(e.target.value)}
+                  onChange={(e) => onTextChange(e.target.value)}
                   className="mt-4 min-h-[320px] border-0 bg-muted text-lg leading-relaxed"
                   maxLength={5000}
                 />
               )}
-              <p className="mt-2 text-xs text-muted-foreground">Delete, rewrite or add words — then re-speak.</p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {words.length ? "Deleting words here cuts them from the recording too. Rewrite or add words, then re-speak." : "Delete, rewrite or add words — then re-speak."}
+              </p>
             </section>
 
             <aside className="flex flex-col gap-6">

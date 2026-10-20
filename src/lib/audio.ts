@@ -165,3 +165,44 @@ export function wordsOnTimeline(segs: Segment[], words: Word[]) {
   }
   return out;
 }
+
+const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");
+const tokens = (t: string) => t.split(/\s+/).map(norm).filter(Boolean);
+
+/** Pairs of matching positions (i in a, j in b) from a longest common subsequence. */
+function lcsPairs(a: string[], b: string[]) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+  const out: [number, number][] = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push([i, j]); i++; j++; }
+    else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) i++;
+    else j++;
+  }
+  return out;
+}
+
+/**
+ * When an edit only deletes words from the transcript, returns the indices (into `timelineWords`,
+ * the timed words in timeline order) whose audio should be cut. Rewrites/additions return [].
+ */
+/** True when `newText` only removes whole words from `oldText`. */
+export function isPureDeletion(oldText: string, newText: string) {
+  const a = tokens(oldText), b = tokens(newText);
+  return lcsPairs(a, b).length === b.length;
+}
+
+export function deletedTimelineWords(oldText: string, newText: string, timelineWords: string[]): number[] {
+  const a = tokens(oldText), b = tokens(newText);
+  if (b.length >= a.length) return [];
+  const keep = lcsPairs(a, b);
+  if (keep.length !== b.length) return []; // something was added or rewritten
+  const kept = new Set(keep.map(([i]) => i));
+  const toWord = new Map(lcsPairs(a, timelineWords.map(norm)));
+  const out: number[] = [];
+  a.forEach((_, i) => { if (!kept.has(i) && toWord.has(i)) out.push(toWord.get(i)!); });
+  return out;
+}
