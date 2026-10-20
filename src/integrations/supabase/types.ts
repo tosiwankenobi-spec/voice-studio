@@ -52,6 +52,33 @@ export type Database = {
           },
         ]
       }
+      media: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          prompt: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          prompt?: string
+          storage_path: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          prompt?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       scripts: {
         Row: {
           content: string
