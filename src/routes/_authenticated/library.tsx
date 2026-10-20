@@ -54,7 +54,7 @@ function Library() {
   async function delMedia(id: string, path: string) {
     await supabase.storage.from("clips").remove([path]);
     const { error } = await supabase.from("media").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     qc.invalidateQueries({ queryKey: ["library"] });
   }
   async function delClip(id: string, path: string) {

@@ -92,8 +92,8 @@ function VideoStudio() {
   }
 
   async function animateScene(s: Scene) {
-    if (!user) return toast.error("Sign in to animate scenes.");
-    if (!s.image) return toast.error("Create the image first.");
+    if (!user) { toast.error("Sign in to animate scenes."); return; }
+    if (!s.image) { toast.error("Create the image first."); return; }
     patch(s.id, { busy: "Animating…" });
     try {
       const url = await animate({ prompt: `${s.imagePrompt}. Camera: ${s.motion}`, image: s.image, seconds: Math.min(10, Math.max(3, Math.ceil(s.seconds ?? 8))), onProgress: (p) => patch(s.id, { busy: `Animating… ${Math.round(p)}%` }) });
@@ -123,7 +123,7 @@ function VideoStudio() {
 
   async function doExport() {
     const missing = scenes.some((s) => !s.image || !s.audio);
-    if (missing) return toast.error("Every scene needs a voice and an image first — use Make all scenes.");
+    if (missing) { toast.error("Every scene needs a voice and an image first — use Make all scenes."); return; }
     try {
       const blob = await exportVideo(
         scenes.map((s) => ({ image: s.image, video: s.video, audio: s.audio, seconds: s.seconds ?? 5 })),

@@ -34,7 +34,7 @@ function ImageStudio() {
 
   async function generate() {
     const text = prompt.trim();
-    if (!text) return toast.error("Describe the image first.");
+    if (!text) { toast.error("Describe the image first."); return; }
     const id = crypto.randomUUID();
     setBusy(true);
     setItems((xs) => [{ id, prompt: text, src: "", final: false }, ...xs]);
@@ -49,7 +49,7 @@ function ImageStudio() {
   }
 
   async function bringToLife(it: Item) {
-    if (!user) return toast.error("Sign in to animate images.");
+    if (!user) { toast.error("Sign in to animate images."); return; }
     patch(it.id, { animating: true, progress: 0 });
     try {
       const url = await animate({ prompt: `${it.prompt}. Gentle cinematic camera movement`, image: it.src, onProgress: (p) => patch(it.id, { progress: p }) });

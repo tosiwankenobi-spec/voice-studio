@@ -93,6 +93,7 @@ export const startVideo = createServerFn({ method: "POST" })
     if (d.image) {
       const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(d.image);
       if (!m) throw new Error("Unsupported image.");
+      if (!m || !m[1] || !m[2]) throw new Error("Unsupported image.");
       if (m[2].length > 20_000_000) throw new Error("Image is too large.");
       image = { mime: m[1], data: m[2] };
     }

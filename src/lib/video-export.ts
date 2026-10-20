@@ -36,7 +36,7 @@ export async function exportVideo(scenes: RenderScene[], onProgress: (i: number)
 
   for (let i = 0; i < scenes.length; i++) {
     onProgress(i);
-    const s = scenes[i];
+    const s = scenes[i]!;
     let audioEl: HTMLAudioElement | null = null;
     if (s.audio) {
       audioEl = new Audio(s.audio);
