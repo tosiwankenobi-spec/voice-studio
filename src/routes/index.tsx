@@ -6,6 +6,7 @@ import { Download, Sparkles, Wand2, AudioLines, Loader2, Trash2 } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { ScriptGenerator } from "@/components/ScriptGenerator";
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
 
@@ -82,6 +83,8 @@ function Studio() {
             maxLength={5000}
           />
           <div className="mt-2 text-right text-xs text-muted-foreground">{text.length}/5000</div>
+
+          <ScriptGenerator onScript={setText} disabled={!!busy} />
 
           <div className="mt-4 rounded-xl border bg-secondary p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
