@@ -15,7 +15,7 @@ import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
 
 export const Route = createFileRoute("/")({
   validateSearch: (s: Record<string, unknown>): { script?: string } =>
-    typeof s.script === "string" ? { script: s.script } : {},
+    typeof s["script"] === "string" ? { script: s["script"] as string } : {},
   head: () => ({
     meta: [
       { title: "Vocalis — AI Voice Studio" },
