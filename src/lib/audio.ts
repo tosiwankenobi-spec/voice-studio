@@ -78,3 +78,90 @@ export function encodeWav(buf: AudioBuffer): Blob {
   }
   return new Blob([data], { type: "audio/wav" });
 }
+
+/** A transcribed word, timed in seconds of the ORIGINAL recording. */
+export type Word = { w: string; s: number; e: number };
+
+/** Convert timeline time to original-recording time. */
+export function toSource(segs: Segment[], t: number) {
+  const hit = locate(segs, t);
+  if (!hit) return null;
+  return { index: hit.index, src: segs[hit.index]!.start + hit.offset, startAt: hit.startAt };
+}
+
+/** Word boundaries (gap midpoints) in source time, including start of first and end of last word. */
+export function wordBoundaries(words: Word[]) {
+  const out: number[] = [];
+  words.forEach((w, i) => {
+    const prev = words[i - 1];
+    out.push(prev ? (prev.e + w.s) / 2 : w.s);
+  });
+  const last = words[words.length - 1];
+  if (last) out.push(last.e);
+  return out;
+}
+
+/** Quietest 10ms moment within ±radius seconds of t (source time). */
+export function quietestNear(buffer: AudioBuffer, t: number, radius = 0.3) {
+  const data = buffer.getChannelData(0);
+  const sr = buffer.sampleRate;
+  const win = Math.max(1, Math.floor(sr * 0.01));
+  const from = Math.max(0, Math.floor((t - radius) * sr));
+  const to = Math.min(data.length - win, Math.floor((t + radius) * sr));
+  let best = t;
+  let bestScore = Infinity;
+  for (let i = from; i <= to; i += Math.floor(win / 2) || 1) {
+    let sum = 0;
+    for (let j = 0; j < win; j++) sum += data[i + j]! * data[i + j]!;
+    // Prefer quiet, then closeness to the estimated boundary.
+    const score = sum / win + Math.abs(i / sr - t) * 1e-6;
+    if (score < bestScore) {
+      bestScore = score;
+      best = (i + win / 2) / sr;
+    }
+  }
+  return best;
+}
+
+/** Split at the word gap nearest to timeline time t (falls back to exact time when no words). */
+export function splitAtWord(segs: Segment[], t: number, words: Word[], makeId: () => string, refine?: (src: number) => number) {
+  const loc = toSource(segs, t);
+  if (!loc || !words.length) return splitAt(segs, t, makeId);
+  const s = segs[loc.index]!;
+  const inside = wordBoundaries(words).filter((b) => b > s.start + 0.05 && b < s.end - 0.05);
+  if (!inside.length) return splitAt(segs, t, makeId);
+  let b = inside.reduce((a, x) => (Math.abs(x - loc.src) < Math.abs(a - loc.src) ? x : a));
+  if (refine) b = Math.min(s.end - 0.05, Math.max(s.start + 0.05, refine(b)));
+  return splitAt(segs, loc.startAt + (b - s.start), makeId);
+}
+
+/** Remove the source-time range [a, b) wherever it appears on the timeline. */
+export function cutSource(segs: Segment[], a: number, b: number, makeId: () => string): Segment[] {
+  const out: Segment[] = [];
+  for (const s of segs) {
+    if (b <= s.start || a >= s.end) { out.push(s); continue; }
+    if (a - s.start > 0.01) out.push({ id: makeId(), start: s.start, end: a });
+    if (s.end - b > 0.01) out.push({ id: makeId(), start: b, end: s.end });
+  }
+  return out;
+}
+
+/** Source-time range a word occupies, extended to the midpoints of its neighbouring gaps. */
+export function wordRange(words: Word[], i: number) {
+  const bounds = wordBoundaries(words);
+  return { a: bounds[i]!, b: bounds[i + 1]! };
+}
+
+/** Words in timeline order: each word appears where its midpoint is kept. */
+export function wordsOnTimeline(segs: Segment[], words: Word[]) {
+  const out: { i: number; at: number }[] = [];
+  let acc = 0;
+  for (const s of segs) {
+    words.forEach((w, i) => {
+      const mid = (w.s + w.e) / 2;
+      if (mid >= s.start && mid < s.end) out.push({ i, at: acc + Math.max(0, w.s - s.start) });
+    });
+    acc += segLen(s);
+  }
+  return out;
+}

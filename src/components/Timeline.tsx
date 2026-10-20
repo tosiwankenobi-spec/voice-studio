@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Pause, Play, Scissors, Trash2, Undo2, Download, ChevronLeft, ChevronRight, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { encodeWav, locate, move, renderSegments, segLen, splitAt, totalLength, type Segment } from "@/lib/audio";
+import { cutSource, encodeWav, locate, move, quietestNear, renderSegments, segLen, splitAt, splitAtWord, totalLength, wordRange, wordsOnTimeline, type Segment, type Word } from "@/lib/audio";
 
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 const uid = () => crypto.randomUUID();
@@ -31,7 +31,7 @@ function Waveform({ buffer, seg }: { buffer: AudioBuffer; seg: Segment }) {
   return <canvas ref={ref} className="h-full w-full text-primary" />;
 }
 
-export function Timeline({ file, onSave }: { file: File; onSave?: ((blob: Blob) => void) | undefined }) {
+export function Timeline({ file, words = [], onSave }: { file: File; words?: Word[]; onSave?: ((blob: Blob) => void) | undefined }) {
   const ctxRef = useRef<AudioContext | null>(null);
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null);
   const [segs, setSegs] = useState<Segment[]>([]);
@@ -46,6 +46,13 @@ export function Timeline({ file, onSave }: { file: File; onSave?: ((blob: Blob) 
   const raf = useRef(0);
 
   const total = useMemo(() => totalLength(segs), [segs]);
+  const placed = useMemo(() => wordsOnTimeline(segs, words), [segs, words]);
+  const [picked, setPicked] = useState<{ from: number; to: number } | null>(null);
+  const currentWord = useMemo(() => {
+    let k = -1;
+    placed.forEach((p, idx) => { if (p.at <= playhead + 0.02) k = idx; });
+    return k;
+  }, [placed, playhead]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,7 +131,31 @@ export function Timeline({ file, onSave }: { file: File; onSave?: ((blob: Blob) 
     setPlayhead((p) => Math.min(p, totalLength(next)));
   };
 
-  const split = () => commit(splitAt(segs, playhead, uid));
+  const split = () =>
+    commit(words.length && buffer ? splitAtWord(segs, playhead, words, uid, (t) => quietestNear(buffer, t)) : splitAt(segs, playhead, uid));
+  const cutWords = () => {
+    if (!picked || !buffer) return;
+    const lo = Math.min(picked.from, picked.to);
+    const hi = Math.max(picked.from, picked.to);
+    let next = segs;
+    for (let k = lo; k <= hi; k++) {
+      const p = placed[k];
+      if (!p) continue;
+      const { a, b } = wordRange(words, p.i);
+      const qa = p.i === 0 ? a : quietestNear(buffer, a, 0.15);
+      const qb = p.i === words.length - 1 ? b : quietestNear(buffer, b, 0.15);
+      next = cutSource(next, Math.min(qa, words[p.i]!.s), Math.max(qb, words[p.i]!.e), uid);
+    }
+    if (!next.length) { toast.error("You can't cut every word."); return; }
+    commit(next);
+    setPicked(null);
+  };
+  const pickWord = (k: number, extend: boolean) => {
+    setPicked((cur) => (extend && cur ? { from: cur.from, to: k } : { from: k, to: k }));
+    const at = placed[k]?.at ?? 0;
+    setPlayhead(at);
+    if (playing) play(at);
+  };
   const del = () => {
     if (!selected || segs.length <= 1) return;
     commit(segs.filter((s) => s.id !== selected));
@@ -149,7 +180,7 @@ export function Timeline({ file, onSave }: { file: File; onSave?: ((blob: Blob) 
       if (tag === "TEXTAREA" || tag === "INPUT") return;
       if (e.code === "Space") { e.preventDefault(); if (playing) stop(); else play(playhead); }
       else if (e.key === "s" || e.key === "S") split();
-      else if (e.key === "Delete" || e.key === "Backspace") del();
+      else if (e.key === "Delete" || e.key === "Backspace") { if (picked) cutWords(); else del(); }
       else if ((e.metaKey || e.ctrlKey) && e.key === "z") undo();
     };
     window.addEventListener("keydown", onKey);
@@ -244,8 +275,33 @@ export function Timeline({ file, onSave }: { file: File; onSave?: ((blob: Blob) 
         />
       </div>
 
+      {words.length > 0 && (
+        <div className="mt-4 rounded-xl bg-muted p-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">Words in timeline order — click a word to jump, shift-click to select several, then cut them.</p>
+            <Button size="sm" variant="outline" disabled={!picked} onClick={cutWords}><Scissors className="h-4 w-4" /> Cut words</Button>
+          </div>
+          <p className="leading-relaxed" aria-label="Timed words">
+            {placed.map((p, k) => {
+              const lo = picked ? Math.min(picked.from, picked.to) : -1;
+              const hi = picked ? Math.max(picked.from, picked.to) : -1;
+              const sel = k >= lo && k <= hi;
+              return (
+                <button
+                  key={`${p.i}-${k}`}
+                  onClick={(e) => pickWord(k, e.shiftKey)}
+                  className={`mr-1 rounded px-0.5 ${sel ? "bg-primary text-primary-foreground" : k === currentWord ? "bg-accent/30 text-foreground" : "hover:bg-secondary"}`}
+                >
+                  {words[p.i]!.w}
+                </button>
+              );
+            })}
+          </p>
+        </div>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">Space play · S split · Del cut · Ctrl+Z undo · drag clips to rearrange · click the ruler to jump</p>
+        <p className="text-xs text-muted-foreground">Space play · S split{words.length ? " (snaps to the nearest word gap)" : ""} · Del cut · Ctrl+Z undo · drag clips to rearrange · click the ruler to jump</p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" disabled={exporting} onClick={() => exportAudio(false)}>
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export

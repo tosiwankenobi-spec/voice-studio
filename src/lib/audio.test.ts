@@ -28,3 +28,30 @@ describe("timeline edits", () => {
     expect(locate(move(base, 1, 0), 3)).toMatchObject({ index: 1, offset: 1 });
   });
 });
+
+import { cutSource, splitAtWord, wordsOnTimeline, wordRange, type Word } from "./audio";
+
+const words: Word[] = [
+  { w: "hello", s: 0.2, e: 0.6 },
+  { w: "um", s: 1.0, e: 1.2 },
+  { w: "world", s: 1.6, e: 2.0 },
+];
+const whole: Segment[] = [{ id: "w", start: 0, end: 3 }];
+
+describe("word-aware edits", () => {
+  it("split snaps to the nearest gap between words", () => {
+    const out = splitAtWord(whole, 1.1, words, id); // inside "um", nearer the um|world gap? 1.1 → gaps at 0.8 and 1.4
+    expect(out[0]!.end).toBe(1.4);
+  });
+  it("cutting a word removes exactly its gap-to-gap range", () => {
+    const { a, b } = wordRange(words, 1);
+    expect([a, b]).toEqual([0.8, 1.4]);
+    const out = cutSource(whole, a, b, id);
+    expect(out.map((s) => [s.start, s.end])).toEqual([[0, 0.8], [1.4, 3]]);
+    expect(wordsOnTimeline(out, words).map((x) => words[x.i]!.w)).toEqual(["hello", "world"]);
+  });
+  it("words follow the timeline after rearranging", () => {
+    const parts = splitAtWord(whole, 1.5, words, id);
+    expect(wordsOnTimeline(move(parts, 1, 0), words).map((x) => words[x.i]!.w)).toEqual(["world", "hello", "um"]);
+  });
+});

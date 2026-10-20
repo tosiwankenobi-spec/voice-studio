@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/useAuth";
 import { saveClip } from "@/lib/library";
 import { Timeline } from "@/components/Timeline";
+import type { Word } from "@/lib/audio";
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
@@ -34,6 +35,7 @@ function Editor() {
   const input = useRef<HTMLInputElement>(null);
   const [original, setOriginal] = useState<{ url: string; name: string } | null>(null);
   const [transcript, setTranscript] = useState("");
+  const [words, setWords] = useState<Word[]>([]);
   const [text, setText] = useState("");
   const [voice, setVoice] = useState<string>("Kore");
   const [busy, setBusy] = useState<"upload" | "speak" | "clean" | null>(null);
@@ -56,12 +58,15 @@ function Editor() {
     setMyVoiceId(null);
     setVoice(MINE);
     setBusy("upload");
+    setWords([]);
     try {
       const fd = new FormData();
       fd.append("file", file);
       const r = await transcribe({ data: fd });
       setTranscript(r.text);
       setText(r.text);
+      setWords(r.words);
+      if (!r.words.length) toast.message("Word timings unavailable — splits will cut at the exact playhead.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Transcription failed");
     } finally {
@@ -149,6 +154,7 @@ function Editor() {
             <div className="mt-8">
               <Timeline
                 file={file}
+                words={words}
                 onSave={user ? (blob) => {
                   saveClip({ dataUrl: URL.createObjectURL(blob), voice: "Edited recording", text: text || original.name })
                     .then(() => toast.success("Edit saved to your library"))
