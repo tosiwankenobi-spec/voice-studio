@@ -1,0 +1,181 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { Upload, Loader2, AudioLines, Download, RotateCcw, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { SiteHeader } from "@/components/SiteHeader";
+import { askClaude, generateSpeech, transcribeRecording, VOICES } from "@/lib/studio.functions";
+
+export const Route = createFileRoute("/editor")({
+  head: () => ({
+    meta: [
+      { title: "Recording Editor — Vocalis" },
+      { name: "description", content: "Upload a recording, edit the transcript like a document, and re-speak it with AI." },
+      { property: "og:title", content: "Recording Editor — Vocalis" },
+      { property: "og:description", content: "Edit audio by editing text, then re-speak it with AI voices." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
+  component: Editor,
+});
+
+function Editor() {
+  const transcribe = useServerFn(transcribeRecording);
+  const speak = useServerFn(generateSpeech);
+  const claude = useServerFn(askClaude);
+  const input = useRef<HTMLInputElement>(null);
+  const [original, setOriginal] = useState<{ url: string; name: string } | null>(null);
+  const [transcript, setTranscript] = useState("");
+  const [text, setText] = useState("");
+  const [voice, setVoice] = useState<string>("Kore");
+  const [busy, setBusy] = useState<"upload" | "speak" | "clean" | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  async function onFile(file: File) {
+    if (file.size > 25 * 1024 * 1024) return toast.error("Recordings must be under 25 MB.");
+    setOriginal({ url: URL.createObjectURL(file), name: file.name });
+    setResult(null);
+    setBusy("upload");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await transcribe({ data: fd });
+      setTranscript(r.text);
+      setText(r.text);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Transcription failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function cleanUp() {
+    setBusy("clean");
+    try {
+      const r = await claude({
+        data: { text, instruction: "Remove filler words (um, uh, like, you know), false starts and repeated words. Keep the speaker's wording and meaning otherwise unchanged." },
+      });
+      setText(r.text);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Claude failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function respeak() {
+    setBusy("speak");
+    try {
+      const r = await speak({ data: { text, voice } });
+      setResult(`data:${r.mime};base64,${r.audio}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Generation failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-background bg-glow font-sans">
+      <SiteHeader />
+      <main className="mx-auto max-w-6xl px-6 pb-16">
+        <h1 className="font-display text-4xl font-bold md:text-5xl">
+          Edit audio <span className="text-primary">like a document.</span>
+        </h1>
+        <p className="mt-2 text-muted-foreground">Upload a recording, fix the words, and re-speak it.</p>
+
+        <input
+          ref={input}
+          type="file"
+          accept="audio/*,video/*"
+          className="hidden"
+          onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+        />
+
+        {!original ? (
+          <button
+            onClick={() => input.current?.click()}
+            className="mt-8 flex w-full flex-col items-center gap-3 rounded-2xl border-2 border-dashed bg-card p-16 text-muted-foreground hover:border-primary hover:text-foreground"
+          >
+            <Upload className="h-10 w-10 text-primary" />
+            <span className="font-display text-xl font-bold text-foreground">Upload a recording</span>
+            <span className="text-sm">Audio or video, up to 25 MB</span>
+          </button>
+        ) : (
+          <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_360px]">
+            <section className="rounded-2xl border bg-card p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold">Transcript</h2>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={!!busy || !text} onClick={cleanUp}>
+                    {busy === "clean" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    Remove filler words
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={!!busy || text === transcript} onClick={() => setText(transcript)}>
+                    <RotateCcw className="h-4 w-4" /> Reset
+                  </Button>
+                </div>
+              </div>
+              {busy === "upload" ? (
+                <div className="mt-6 flex min-h-[320px] items-center justify-center gap-2 rounded-xl bg-muted text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" /> Transcribing your recording…
+                </div>
+              ) : (
+                <Textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  className="mt-4 min-h-[320px] border-0 bg-muted text-lg leading-relaxed"
+                  maxLength={5000}
+                />
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">Delete, rewrite or add words — then re-speak.</p>
+            </section>
+
+            <aside className="flex flex-col gap-6">
+              <div className="rounded-2xl border bg-card p-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-display text-lg font-bold">Original</h2>
+                  <Button size="sm" variant="ghost" onClick={() => input.current?.click()} disabled={!!busy}>
+                    Replace
+                  </Button>
+                </div>
+                <p className="mt-1 truncate text-xs text-muted-foreground">{original.name}</p>
+                <audio controls src={original.url} className="mt-3 w-full" />
+              </div>
+
+              <div className="rounded-2xl border bg-card p-6">
+                <h2 className="font-display text-lg font-bold">Re-speak with</h2>
+                <p className="mt-1 text-xs text-muted-foreground">Pick the voice closest to the original speaker.</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {VOICES.map((v) => (
+                    <Button key={v} size="sm" variant={voice === v ? "default" : "outline"} onClick={() => setVoice(v)}>
+                      {v}
+                    </Button>
+                  ))}
+                </div>
+                <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !text.trim()} onClick={respeak}>
+                  {busy === "speak" ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
+                  Re-speak edited text
+                </Button>
+                {result && (
+                  <div className="mt-4 rounded-xl bg-muted p-3">
+                    <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Edited version · {voice}</span>
+                      <a href={result} download="vocalis-edit.wav" aria-label="Download">
+                        <Download className="h-4 w-4 hover:text-primary" />
+                      </a>
+                    </div>
+                    <audio controls src={result} className="w-full" />
+                  </div>
+                )}
+              </div>
+            </aside>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

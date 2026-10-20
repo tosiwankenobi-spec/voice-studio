@@ -6,6 +6,7 @@ import { Download, Sparkles, Wand2, AudioLines, Loader2, Trash2 } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
 
 export const Route = createFileRoute("/")({
@@ -66,13 +67,7 @@ function Studio() {
 
   return (
     <div className="min-h-screen bg-background bg-glow font-sans">
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
-        <div className="flex items-center gap-2">
-          <AudioLines className="h-7 w-7 text-primary" />
-          <span className="font-display text-2xl font-extrabold tracking-tight">Vocalis</span>
-        </div>
-        <span className="text-sm text-muted-foreground">Script with Claude · Voice in seconds</span>
-      </header>
+      <SiteHeader />
 
       <main className="mx-auto grid max-w-6xl gap-6 px-6 pb-16 lg:grid-cols-[1fr_360px]">
         <section className="rounded-2xl border bg-card p-6">
