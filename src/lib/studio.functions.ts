@@ -110,3 +110,32 @@ export const askClaude = createServerFn({ method: "POST" })
     if (!out.trim()) throw new Error("Claude returned nothing.");
     return { text: out.trim() };
   });
+
+const MAX_UPLOAD = 25 * 1024 * 1024;
+
+export const transcribeRecording = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => {
+    if (!(d instanceof FormData)) throw new Error("Upload a recording.");
+    const file = d.get("file");
+    if (!(file instanceof File) || !file.size) throw new Error("Upload a recording.");
+    if (file.size > MAX_UPLOAD) throw new Error("Recordings must be under 25 MB.");
+    if (!file.type.startsWith("audio/") && !file.type.startsWith("video/"))
+      throw new Error("That file isn't audio or video.");
+    return { file };
+  })
+  .handler(async ({ data }) => {
+    const form = new FormData();
+    form.append("model", "openai/gpt-transcribe");
+    form.append("file", data.file, data.file.name);
+    form.append("response_format", "json");
+    const res = await fetch(`${GATEWAY}/v1/audio/transcriptions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key()}` },
+      body: form,
+    });
+    if (!res.ok) throw await failure(res);
+    const j = (await res.json()) as { text?: string };
+    const text = (j.text ?? "").trim();
+    if (!text) throw new Error("No speech was found in that recording.");
+    return { text };
+  });
