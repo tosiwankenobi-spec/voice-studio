@@ -233,6 +233,7 @@ function Editor() {
               </div>
             </aside>
           </div>
+          </>
         )}
       </main>
     </div>
