@@ -113,3 +113,20 @@ describe("Paid call usage gates", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 });
+
+describe('Take generation', () => {
+  it('reserves usage for every generated stock take with delivery controls', async () => {
+    state.signedIn = true;
+    vi.stubEnv('LOVABLE_API_KEY', 'test-only');
+    await generateSpeech({ data: { text: 'Hello friend', voice: 'Kore', delivery: { pace: 'slower', emphasis: 'friend', pause: 0.5 } } });
+    expect(recordAIUsage).toHaveBeenCalledTimes(1);
+    expect(recordAIUsage).toHaveBeenCalledWith(expect.objectContaining({ userId: 'owner' }), 'tts', expect.any(Number));
+    const call = vi.mocked(fetch).mock.calls[0];
+    expect(JSON.parse(String(call?.[1]?.body)).contents[0].parts[0].text).toContain('stressing the word "friend"');
+  });
+  it('rejects unsupported pauses before spending', async () => {
+    state.signedIn = true;
+    await expect(generateSpeech({ data: { text: 'Hello', voice: 'Kore', delivery: { pause: 0.75 } } })).rejects.toThrow('pause');
+    expect(recordAIUsage).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+});
