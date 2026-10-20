@@ -7,7 +7,7 @@ const CLAUDE_MODEL = "anthropic/claude-sonnet-5";
 export const VOICES = ["Kore", "Puck", "Charon", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"] as const;
 
 function key() {
-  const k = process.env.LOVABLE_API_KEY;
+  const k = process.env["LOVABLE_API_KEY"];
   if (!k) throw new Error("AI is not configured.");
   return k;
 }
