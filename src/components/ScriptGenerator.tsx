@@ -25,7 +25,7 @@ export function ScriptGenerator({ onScript, disabled }: { onScript: (s: string) 
   async function write() {
     setBusy(true);
     try {
-      const l = LENGTHS[length];
+      const l = LENGTHS[length] ?? LENGTHS[1]!;
       const r = await claude({
         data: {
           text: "",
