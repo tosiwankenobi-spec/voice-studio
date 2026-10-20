@@ -26,6 +26,7 @@ async function failure(res: Response) {
 export type PlannedScene = { narration: string; imagePrompt: string; motion: string };
 
 export const planScenes = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: { script: string; look?: string }) => {
     const script = String(d.script ?? "").trim();
     if (!script) throw new Error("Write or paste a script first.");

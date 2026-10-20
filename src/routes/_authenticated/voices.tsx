@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VoicePreview } from "@/components/VoicePreview";
+import { VoiceConsent } from "@/components/VoiceConsent";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
 import { createVoice, listVoices, renameVoice } from "@/lib/voices";
 import { deleteMyVoice } from "@/lib/media.functions";
@@ -32,14 +33,17 @@ function Voices() {
   const { data, isLoading, error } = useQuery({ queryKey: ["voices"], queryFn: listVoices });
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [consent, setConsent] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   async function add(file: File) {
+    if (!consent) { toast.error("Confirm you have permission to copy this voice."); return; }
     if (file.size > 25 * 1024 * 1024) { toast.error("Recordings must be under 25 MB."); return; }
     setBusy(true);
     try {
-      await createVoice(file, name || "My voice");
+      await createVoice(file, name || "My voice", consent);
       setName("");
+      setConsent(false);
       toast.success("Voice saved");
       qc.invalidateQueries({ queryKey: ["voices"] });
     } catch (e) {
@@ -80,14 +84,15 @@ function Voices() {
         <section className="mt-6 rounded-2xl border bg-card p-5">
           <h2 className="font-display text-lg font-bold">Add a voice</h2>
           <p className="mt-1 text-xs text-muted-foreground">Best results: 30 seconds to 2 minutes of one person speaking clearly, no music.</p>
+          <VoiceConsent checked={consent} onChange={setConsent} />
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. My podcast voice" maxLength={80} />
             <input ref={input} type="file" accept="audio/*,video/*" className="hidden" onChange={(e) => e.target.files?.[0] && add(e.target.files[0])} />
-            <Button variant="outline" disabled={busy || mic.recording} onClick={() => input.current?.click()}><Upload className="h-4 w-4" />Upload</Button>
+            <Button variant="outline" disabled={busy || mic.recording || !consent} onClick={() => input.current?.click()}><Upload className="h-4 w-4" />Upload</Button>
             {mic.recording ? (
               <Button variant="destructive" onClick={mic.stop}><Square className="h-4 w-4" />Stop · {mic.clock}</Button>
             ) : (
-              <Button variant="outline" disabled={busy} onClick={mic.start}><Circle className="h-4 w-4 fill-destructive text-destructive" />Record</Button>
+              <Button variant="outline" disabled={busy || !consent} onClick={mic.start}><Circle className="h-4 w-4 fill-destructive text-destructive" />Record</Button>
             )}
           </div>
           {busy && <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Copying the voice…</p>}

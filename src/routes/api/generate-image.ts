@@ -5,6 +5,10 @@ export const Route = createFileRoute("/api/generate-image")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        const { authenticateImageRequest } = await import("@/lib/image-auth.server");
+        if (!(await authenticateImageRequest(request))) {
+          return new Response("Sign in to create images.", { status: 401 });
+        }
         const { prompt, stream = true } = (await request.json()) as { prompt?: string; stream?: boolean };
         const text = String(prompt ?? "").trim().slice(0, 4000);
         if (!text) return new Response("Describe the image first.", { status: 400 });
@@ -15,7 +19,7 @@ export const Route = createFileRoute("/api/generate-image")({
           status: upstream.status,
           headers: {
             "Content-Type": upstream.headers.get("Content-Type") ?? "application/json",
-            "Cache-Control": "no-cache",
+            "Cache-Control": "no-store",
           },
         });
       },

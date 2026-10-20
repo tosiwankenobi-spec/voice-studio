@@ -15,22 +15,22 @@ export async function listVoices(): Promise<SavedVoice[]> {
 }
 
 /** Copies a voice from a recording, stores the recording as its preview, and names it. */
-export async function createVoice(file: File, name: string) {
+export async function createVoice(file: File, name: string, consent: boolean) {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) throw new Error("Sign in to save voices.");
   const fd = new FormData();
   fd.append("file", file);
-  const { voiceId } = await cloneMyVoice({ data: fd });
+  fd.append("consent", String(consent));
+  fd.append("name", name);
+  const { id, voiceId } = await cloneMyVoice({ data: fd });
   const ext = file.name.split(".").pop() || "webm";
   const path = `${u.user.id}/voices/${crypto.randomUUID()}.${ext}`;
   const up = await supabase.storage.from("clips").upload(path, file, { contentType: file.type || "audio/webm" });
-  const { data, error } = await supabase
-    .from("voices")
-    .insert({ name: name.trim().slice(0, 80) || "My voice", eleven_voice_id: voiceId, sample_path: up.error ? null : path })
-    .select("id")
-    .single();
-  if (error) throw error;
-  return { id: data.id, voiceId };
+  if (!up.error) {
+    const { error } = await supabase.from("voices").update({ sample_path: path }).eq("id", id);
+    if (error) await supabase.storage.from("clips").remove([path]);
+  }
+  return { id, voiceId };
 }
 
 export async function renameVoice(id: string, name: string) {

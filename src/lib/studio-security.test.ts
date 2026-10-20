@@ -1,0 +1,95 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const state = vi.hoisted(() => ({ signedIn: false, registered: false, insertFails: false }));
+vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: "auth" }));
+vi.mock("@tanstack/react-start", () => ({
+  createServerOnlyFn: (fn: unknown) => fn,
+  createServerFn: () => {
+    let protectedFn = false;
+    let validate = (data: unknown): unknown => data;
+    const builder = {
+      middleware: () => { protectedFn = true; return builder; },
+      inputValidator: (fn: typeof validate) => { validate = fn; return builder; },
+      handler: (fn: (args: unknown) => unknown) => async (opts: { data: unknown }) => {
+        if (protectedFn && !state.signedIn) throw new Error("Unauthorized");
+        const supabase = { from: () => ({
+          insert: () => ({ select: () => ({ single: async () => {
+            state.registered = !state.insertFails;
+            return state.insertFails ? { error: new Error("Save failed"), data: null } : { data: { id: "saved-id" }, error: null };
+          } }) }),
+          select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) }),
+        }) };
+        return fn({ data: validate(opts.data), context: { userId: "owner", supabase } });
+      },
+    };
+    return builder;
+  },
+}));
+
+import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording } from "./studio.functions";
+import { planScenes } from "./media.functions";
+import { audioExtension } from "./studio-validation";
+import { authenticateImageRequest } from "./image-auth.server";
+
+beforeEach(() => {
+  state.signedIn = false;
+  state.registered = false;
+  state.insertFails = false;
+  vi.stubEnv("ELEVENLABS_API_KEY", "test-only");
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ voice_id: "testVoice12345" }), { status: 200 })));
+});
+
+describe("AI access", () => {
+  const calls = [
+    ["speech", () => generateSpeech({ data: { text: "Hello", voice: "Kore" } })],
+    ["Claude", () => askClaude({ data: { text: "Hello", instruction: "Polish" } })],
+    ["transcription", () => transcribeRecording({ data: new FormData() })],
+    ["voice cloning", () => cloneMyVoice({ data: new FormData() })],
+    ["cloned speech", () => speakWithMyVoice({ data: { text: "Hello", voiceId: "testVoice12345" } })],
+    ["scene planning", () => planScenes({ data: { script: "Hello" } })],
+  ] as const;
+  for (const [name, call] of calls) it(`${name} rejects signed-out callers without spending credits`, async () => {
+    await expect(call()).rejects.toThrow("Unauthorized");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("image requests require a bearer session", async () => {
+    expect(await authenticateImageRequest(new Request("https://example.test/api/generate-image"))).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("cloned speech rejects a voice not owned by the caller", async () => {
+    state.signedIn = true;
+    await expect(speakWithMyVoice({ data: { text: "Hello", voiceId: "testVoice12345" } })).rejects.toThrow("saved voices");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+function recording(consent?: string) {
+  const form = new FormData();
+  form.append("file", new File(["recorded speech"], "voice.wav", { type: "audio/wav" }));
+  if (consent) form.append("consent", consent);
+  return form;
+}
+
+describe("Voice permission and registration", () => {
+  it("rejects cloning without explicit permission", async () => {
+    state.signedIn = true;
+    await expect(cloneMyVoice({ data: recording() })).rejects.toThrow("permission");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("saves an authenticated consented clone before returning its ID", async () => {
+    state.signedIn = true;
+    expect(await cloneMyVoice({ data: recording("true") })).toEqual({ id: "saved-id", voiceId: "testVoice12345" });
+    expect(state.registered).toBe(true);
+  });
+  it("deletes the provider clone if saving fails", async () => {
+    state.signedIn = true;
+    state.insertFails = true;
+    await expect(cloneMyVoice({ data: recording("true") })).rejects.toThrow("Couldn't save");
+    expect(fetch).toHaveBeenLastCalledWith("https://api.elevenlabs.io/v1/voices/testVoice12345", expect.objectContaining({ method: "DELETE" }));
+  });
+});
+
+describe("Audio filenames", () => {
+  it("names ElevenLabs MPEG audio mp3", () => expect(audioExtension("audio/mpeg")).toBe("mp3"));
+  it("keeps WAV exports wav", () => expect(audioExtension("audio/wav")).toBe("wav"));
+});

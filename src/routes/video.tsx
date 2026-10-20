@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { SiteHeader } from "@/components/SiteHeader";
+import { AISignIn } from "@/components/AISignIn";
 import { useAuth } from "@/hooks/useAuth";
 import { VOICES, generateSpeech } from "@/lib/studio.functions";
 import { planScenes } from "@/lib/media.functions";
@@ -58,6 +59,7 @@ function VideoStudio() {
   const patch = (id: string, p: Partial<Scene>) => setScenes((xs) => xs.map((x) => (x.id === id ? { ...x, ...p } : x)));
 
   async function doPlan() {
+    if (!user) { toast.error("Sign in to plan scenes."); return; }
     setPlanning(true);
     try {
       const r = await plan({ data: { script, look } });
@@ -71,6 +73,7 @@ function VideoStudio() {
   }
 
   async function makeVoice(s: Scene) {
+    if (!user) throw new Error("Sign in to generate speech.");
     patch(s.id, { busy: "Voicing…" });
     try {
       const r = await speak({ data: { text: s.narration, voice } });
@@ -83,6 +86,7 @@ function VideoStudio() {
   }
 
   async function makeImage(s: Scene) {
+    if (!user) throw new Error("Sign in to create images.");
     patch(s.id, { busy: "Painting…", imageFinal: false });
     try {
       await streamImage("/api/generate-image", { prompt: `${s.imagePrompt}. Style: ${look}. Wide 16:9 composition, no text.` }, (image, f) => patch(s.id, { image, imageFinal: f }));
@@ -105,6 +109,7 @@ function VideoStudio() {
   }
 
   async function makeAll() {
+    if (!user) { toast.error("Sign in to make scenes."); return; }
     setMaking(true);
     try {
       for (const s of scenesRef.current) {
@@ -145,6 +150,7 @@ function VideoStudio() {
       <main className="mx-auto max-w-6xl px-6 pb-16">
         <h1 className="font-display text-4xl font-bold">Video <span className="text-primary">studio</span></h1>
         <p className="mt-2 text-muted-foreground">Paste a script of any length. Claude splits it into scenes, each gets a voiceover and a picture — animate any scene into real motion.</p>
+        {!user && <AISignIn />}
 
         <div className="mt-6 rounded-2xl border bg-card p-5">
           <Textarea value={script} onChange={(e) => setScript(e.target.value)} rows={7} placeholder="Paste or write your script here…" />
@@ -153,7 +159,7 @@ function VideoStudio() {
             <select value={voice} onChange={(e) => setVoice(e.target.value)} className="h-9 rounded-md border bg-background px-3 text-sm" aria-label="Voice">
               {VOICES.map((v) => <option key={v}>{v}</option>)}
             </select>
-            <Button onClick={doPlan} disabled={planning || !script.trim()}>
+            <Button onClick={doPlan} disabled={planning || !script.trim() || !user}>
               {planning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />} Plan scenes
             </Button>
           </div>

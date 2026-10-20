@@ -5,6 +5,7 @@ import { Download, Film, ImageIcon, Loader2, Save, Sparkles } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SiteHeader } from "@/components/SiteHeader";
+import { AISignIn } from "@/components/AISignIn";
 import { useAuth } from "@/hooks/useAuth";
 import { streamImage } from "@/lib/stream-image";
 import { animate, download, saveImage } from "@/lib/media-client";
@@ -33,6 +34,7 @@ function ImageStudio() {
   const patch = (id: string, p: Partial<Item>) => setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...p } : x)));
 
   async function generate() {
+    if (!user) { toast.error("Sign in to create images."); return; }
     const text = prompt.trim();
     if (!text) { toast.error("Describe the image first."); return; }
     const id = crypto.randomUUID();
@@ -67,10 +69,11 @@ function ImageStudio() {
       <main className="mx-auto max-w-6xl px-6 pb-16">
         <h1 className="font-display text-4xl font-bold">Image <span className="text-primary">studio</span></h1>
         <p className="mt-2 text-muted-foreground">Describe a picture, then bring it to life as a short video.</p>
+        {!user && <AISignIn />}
         <div className="mt-6 rounded-2xl border bg-card p-5">
           <Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={3} placeholder="A cozy bakery at sunrise, warm light through the window, film photo" />
           <div className="mt-3 flex justify-end">
-            <Button onClick={generate} disabled={busy}>
+            <Button onClick={generate} disabled={busy || !user}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Create image
             </Button>
           </div>

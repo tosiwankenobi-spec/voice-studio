@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { ScriptGenerator } from "@/components/ScriptGenerator";
 import { SiteHeader } from "@/components/SiteHeader";
+import { AISignIn } from "@/components/AISignIn";
 import { useAuth } from "@/hooks/useAuth";
 import { saveClip, saveScript } from "@/lib/library";
 import { supabase } from "@/integrations/supabase/client";
@@ -83,6 +84,7 @@ function Studio() {
   }, [text, user]);
 
   async function runClaude(instruction: string) {
+    if (!user) { toast.error("Sign in to use AI tools."); return; }
     setBusy("claude");
     try {
       const r = await claude({ data: { text, instruction } });
@@ -97,6 +99,7 @@ function Studio() {
   }
 
   async function runVoice() {
+    if (!user) { toast.error("Sign in to generate speech."); return; }
     setBusy("voice");
     try {
       const r = await speak({ data: { text, voice, style } });
@@ -141,7 +144,8 @@ function Studio() {
             <span>{text.length}/5000</span>
           </div>
 
-          <ScriptGenerator onScript={setText} disabled={!!busy} />
+          {!user && <AISignIn />}
+          <ScriptGenerator onScript={setText} disabled={!!busy || !user} />
 
           <div className="mt-4 rounded-xl border bg-secondary p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -149,7 +153,7 @@ function Studio() {
             </div>
             <div className="mb-3 flex flex-wrap gap-2">
               {QUICK.map((q) => (
-                <Button key={q} size="sm" variant="outline" disabled={!!busy} onClick={() => runClaude(q)}>
+                <Button key={q} size="sm" variant="outline" disabled={!!busy || !user} onClick={() => runClaude(q)}>
                   {q}
                 </Button>
               ))}
@@ -162,7 +166,7 @@ function Studio() {
               }}
             >
               <Input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Ask Claude anything about your script…" />
-              <Button type="submit" variant="secondary" disabled={!!busy || !ask.trim()}>
+              <Button type="submit" variant="secondary" disabled={!!busy || !ask.trim() || !user}>
                 {busy === "claude" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
               </Button>
             </form>
@@ -189,7 +193,7 @@ function Studio() {
                 <option key={s} value={s}>{s || "Natural"}</option>
               ))}
             </select>
-            <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !text.trim()} onClick={runVoice}>
+            <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !text.trim() || !user} onClick={runVoice}>
               {busy === "voice" ? (
                 <span className="flex items-end gap-0.5">
                   {[0, 1, 2, 3].map((i) => (
