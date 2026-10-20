@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Download, Sparkles, Wand2, AudioLines, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { ScriptGenerator } from "@/components/ScriptGenerator";
 import { SiteHeader } from "@/components/SiteHeader";
+import { useAuth } from "@/hooks/useAuth";
+import { saveClip, saveScript } from "@/lib/library";
+import { supabase } from "@/integrations/supabase/client";
 import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
 
 export const Route = createFileRoute("/")({
+  validateSearch: (s: Record<string, unknown>): { script?: string } =>
+    typeof s["script"] === "string" ? { script: s["script"] as string } : {},
   head: () => ({
     meta: [
       { title: "Vocalis — AI Voice Studio" },
@@ -38,6 +43,44 @@ function Studio() {
   const [ask, setAsk] = useState("");
   const [busy, setBusy] = useState<"voice" | "claude" | null>(null);
   const [takes, setTakes] = useState<Take[]>([]);
+  const { user } = useAuth();
+  const { script: scriptParam } = Route.useSearch();
+  const [scriptId, setScriptId] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const loaded = useRef(false);
+
+  // Open a saved script from the library
+  useEffect(() => {
+    if (!scriptParam || !user) return;
+    supabase.from("scripts").select("id, content").eq("id", scriptParam).maybeSingle().then(({ data }) => {
+      if (data) {
+        loaded.current = true;
+        setScriptId(data.id);
+        setText(data.content);
+        setSaveState("saved");
+      }
+    });
+  }, [scriptParam, user]);
+
+  // Auto-save the script while signed in
+  useEffect(() => {
+    if (!user || !text.trim()) return;
+    if (loaded.current) {
+      loaded.current = false;
+      return;
+    }
+    setSaveState("saving");
+    const t = setTimeout(async () => {
+      try {
+        setScriptId(await saveScript(text, scriptId));
+        setSaveState("saved");
+      } catch {
+        setSaveState("idle");
+      }
+    }, 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, user]);
 
   async function runClaude(instruction: string) {
     setBusy("claude");
@@ -59,6 +102,11 @@ function Studio() {
       const r = await speak({ data: { text, voice, style } });
       const url = `data:${r.mime};base64,${r.audio}`;
       setTakes((t) => [{ id: crypto.randomUUID(), url, voice, text }, ...t]);
+      if (user) {
+        saveClip({ dataUrl: url, voice, text, scriptId })
+          .then(() => toast.success("Clip saved to your library"))
+          .catch((e) => toast.error(e instanceof Error ? e.message : "Couldn't save clip"));
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Generation failed");
     } finally {
@@ -82,7 +130,16 @@ function Studio() {
             className="mt-6 min-h-[280px] resize-y border-0 bg-muted text-lg leading-relaxed"
             maxLength={5000}
           />
-          <div className="mt-2 text-right text-xs text-muted-foreground">{text.length}/5000</div>
+          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+            <span>
+              {user ? (
+                saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved to your library" : "Auto-saves as you type"
+              ) : (
+                <Link to="/auth" className="text-primary hover:underline">Sign in to save your work</Link>
+              )}
+            </span>
+            <span>{text.length}/5000</span>
+          </div>
 
           <ScriptGenerator onScript={setText} disabled={!!busy} />
 

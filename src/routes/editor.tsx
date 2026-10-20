@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Upload, Loader2, AudioLines, Download, RotateCcw, Sparkles, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/useAuth";
+import { saveClip } from "@/lib/library";
 import { SiteHeader } from "@/components/SiteHeader";
 import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording, VOICES } from "@/lib/studio.functions";
 
@@ -40,6 +42,7 @@ function Editor() {
   const [file, setFile] = useState<File | null>(null);
   const [myVoiceId, setMyVoiceId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  const { user } = useAuth();
 
   async function onFile(file: File) {
     if (file.size > 25 * 1024 * 1024) {
@@ -98,7 +101,13 @@ function Editor() {
       } else {
         r = await speak({ data: { text, voice } });
       }
-      setResult(`data:${r.mime};base64,${r.audio}`);
+      const url = `data:${r.mime};base64,${r.audio}`;
+      setResult(url);
+      if (user) {
+        saveClip({ dataUrl: url, voice: voice === MINE ? "Your voice" : voice, text })
+          .then(() => toast.success("Clip saved to your library"))
+          .catch((e) => toast.error(e instanceof Error ? e.message : "Couldn't save clip"));
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Generation failed");
     } finally {
