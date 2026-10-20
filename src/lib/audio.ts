@@ -189,6 +189,12 @@ function lcsPairs(a: string[], b: string[]) {
  * When an edit only deletes words from the transcript, returns the indices (into `timelineWords`,
  * the timed words in timeline order) whose audio should be cut. Rewrites/additions return [].
  */
+/** True when `newText` only removes whole words from `oldText`. */
+export function isPureDeletion(oldText: string, newText: string) {
+  const a = tokens(oldText), b = tokens(newText);
+  return lcsPairs(a, b).length === b.length;
+}
+
 export function deletedTimelineWords(oldText: string, newText: string, timelineWords: string[]): number[] {
   const a = tokens(oldText), b = tokens(newText);
   if (b.length >= a.length) return [];
