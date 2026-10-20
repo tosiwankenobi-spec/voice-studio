@@ -16,3 +16,5 @@
 - Voice cloning checks explicit consent server-side and registers the clone using the authenticated RLS client before returning; failed registration attempts provider deletion so browser exits cannot create untracked voices.
 - Cloned speech verifies ownership of the saved provider voice ID before spending credits; clients attach preview samples only after registration.
 - Audio download extensions derive from the returned MIME type so filenames match the encoded content.
+- Paid provider calls reserve usage through the shared server-only usage helper using the authenticated RLS client; fail closed on tracking errors, count attempts (including timing fallbacks), and exclude video polling/deletion because they do not start paid generation. This keeps a single limiter and avoids untracked spending.
+- Usage units are integer estimates: TTS input characters, requested video seconds, browser-decoded transcription seconds (zero if absent from legacy callers), and one for text/image/clone requests; reservations are not actual provider bills.

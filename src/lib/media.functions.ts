@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { recordAIUsage } from "@/lib/usage";
 
 const GATEWAY = "https://ai.gateway.lovable.dev";
 const CLAUDE_MODEL = "anthropic/claude-sonnet-5";
@@ -33,7 +34,8 @@ export const planScenes = createServerFn({ method: "POST" })
     if (script.length > 60000) throw new Error("Keep scripts under 60,000 characters.");
     return { script, look: String(d.look ?? "").slice(0, 300) };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await recordAIUsage(context, "scene_planning", 1);
     const res = await fetch(`${GATEWAY}/v1/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json", "X-Lovable-AIG-SDK": "fetch" },
@@ -100,7 +102,8 @@ export const startVideo = createServerFn({ method: "POST" })
     }
     return { prompt, seconds, image };
   })
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
+    await recordAIUsage(context, "video", data.seconds);
     const text = `${data.prompt}. In a single continuous shot, no scene cuts. No dialogue. Soft ambient sound only.`;
     const input = data.image
       ? [

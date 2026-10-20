@@ -6,4 +6,8 @@
 Verification limits: live ElevenLabs cloning and MP3 generation were not exercised; registration, cleanup and MPEG filename behavior passed mocked regression tests. Existing orphaned ElevenLabs voices were not deleted. Transcription completion was not confirmed during the timed browser check.
 
 - [x] Update the shared signed-out prompt to "Sign in to start creating".
-- [ ] Add usage tracking and enforce 60 AI calls per user in 10 minutes — awaiting confirmation of a custom database-based limit because no standard backend rate-limiting primitive exists.
+- [x] Add usage rows, own-row access policies, and the user/date index.
+- [x] Enforce the approved 60-call/10-minute limit and record kind/units before paid requests.
+- [x] Run regression tests and verify authenticated usage recording and blocked requests.
+
+Usage verification: authenticated stock speech recorded 50 TTS characters and saved its clip, visible in My Library. Limit boundary and provider blocking are covered by regression tests; live saturation with 60 requests was not performed. Duration units are estimates; zero represents unknown duration. Provider failures also count, and timing fallbacks reserve separate calls.

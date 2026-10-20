@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ signedIn: false, registered: false, insertFails: false }));
 vi.mock("@/integrations/supabase/auth-middleware", () => ({ requireSupabaseAuth: "auth" }));
+vi.mock("@/lib/usage", () => ({ recordAIUsage: vi.fn(), UsageLimitError: class extends Error {} }));
 vi.mock("@tanstack/react-start", () => ({
   createServerOnlyFn: (fn: unknown) => fn,
   createServerFn: () => {
@@ -27,11 +28,13 @@ vi.mock("@tanstack/react-start", () => ({
 }));
 
 import { askClaude, cloneMyVoice, generateSpeech, speakWithMyVoice, transcribeRecording } from "./studio.functions";
-import { planScenes } from "./media.functions";
+import { planScenes, startVideo } from "./media.functions";
+import { recordAIUsage } from "./usage";
 import { audioExtension } from "./studio-validation";
 import { authenticateImageRequest } from "./image-auth.server";
 
 beforeEach(() => {
+  vi.mocked(recordAIUsage).mockReset();
   state.signedIn = false;
   state.registered = false;
   state.insertFails = false;
@@ -92,4 +95,21 @@ describe("Voice permission and registration", () => {
 describe("Audio filenames", () => {
   it("names ElevenLabs MPEG audio mp3", () => expect(audioExtension("audio/mpeg")).toBe("mp3"));
   it("keeps WAV exports wav", () => expect(audioExtension("audio/wav")).toBe("wav"));
+});
+
+describe("Paid call usage gates", () => {
+  const calls = [
+    ["speech", () => generateSpeech({ data: { text: "Hello", voice: "Kore" } })],
+    ["Claude", () => askClaude({ data: { text: "Hello", instruction: "Polish" } })],
+    ["transcription", () => transcribeRecording({ data: recording() })],
+    ["voice cloning", () => cloneMyVoice({ data: recording("true") })],
+    ["scene planning", () => planScenes({ data: { script: "Hello" } })],
+    ["video", () => startVideo({ data: { prompt: "A waving hand", seconds: 8 } })],
+  ] as const;
+  for (const [name, call] of calls) it(`${name} stops before the provider when usage is blocked`, async () => {
+    state.signedIn = true;
+    vi.mocked(recordAIUsage).mockRejectedValueOnce(new Error("60 AI calls in 10 minutes"));
+    await expect(call()).rejects.toThrow("60 AI calls");
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
