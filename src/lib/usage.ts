@@ -6,7 +6,7 @@ export const AI_CALL_LIMIT = 60;
 export const AI_WINDOW_MS = 10 * 60 * 1000;
 export const AI_LIMIT_MESSAGE = "You've made 60 AI calls in 10 minutes. Wait a few minutes, then try again.";
 export class UsageLimitError extends Error {}
-export type UsageKind = "tts" | "cloned_tts" | "claude" | "scene_planning" | "transcription" | "word_timings_elevenlabs" | "word_timings_ai" | "voice_clone" | "video" | "image";
+export type UsageKind = "tts" | "cloned_tts" | "claude" | "scene_planning" | "transcription" | "word_timings_elevenlabs" | "word_timings_ai" | "voice_clone" | "video" | "image" | "product_fetch" | "ad_planning" | "translation" | "tts_preview";
 
 /** Reservations count attempts, including provider failures; they are not billing records. */
 export const recordAIUsage = createServerOnlyFn(async (

@@ -175,7 +175,8 @@ export const deleteMyVoice = createServerFn({ method: "POST" })
       const r = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(row.eleven_voice_id)}`, { method: "DELETE", headers: { "xi-api-key": k } });
       if (!r.ok && r.status !== 404 && r.status !== 400) console.error("ElevenLabs delete failed", r.status, await r.text());
     }
-    if (row.sample_path) await sb.storage.from("clips").remove([row.sample_path]);
+    const files = [row.sample_path, row.consent_path].filter((p): p is string => !!p);
+    if (files.length) await sb.storage.from("clips").remove(files);
     const del = await sb.from("voices").delete().eq("id", data.id);
     if (del.error) throw new Error(del.error.message);
     return { ok: true };

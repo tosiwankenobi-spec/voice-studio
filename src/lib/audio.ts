@@ -83,7 +83,7 @@ export function encodeWav(buf: AudioBuffer): Blob {
 }
 
 /** A transcribed word, timed in seconds of the ORIGINAL recording. */
-export type Word = { w: string; s: number; e: number; patchId?: string };
+export type Word = { w: string; s: number; e: number; patchId?: string; sp?: string };
 
 /** Convert timeline time to original-recording time. */
 export function toSource(segs: Segment[], t: number) {

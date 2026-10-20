@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { requireVoiceConsent } from "@/lib/studio-validation";
+import { consentMatches, requireVoiceConsent } from "@/lib/studio-validation";
+import { FREE_PREVIEW_CHARS, FREE_PREVIEWS_PER_DAY } from "@/lib/costs";
 import { recordAIUsage, UsageLimitError } from "@/lib/usage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -30,18 +31,33 @@ async function failure(res: Response) {
   return new Error(`AI request failed (${res.status}): ${String(msg).slice(0, 300)}`);
 }
 
+type Ctx = { supabase: SupabaseClient<Database>; userId: string };
+
+/** Free previews: short (first-sentence) clips that cost no credits, capped per day. */
+async function reservePreview(context: Ctx, text: string) {
+  if (text.length > FREE_PREVIEW_CHARS) throw new Error(`Free previews are limited to ${FREE_PREVIEW_CHARS} characters.`);
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  const { count, error } = await context.supabase.from("usage_events").select("id", { count: "exact", head: true })
+    .eq("user_id", context.userId).eq("kind", "tts_preview").gt("created_at", since.toISOString());
+  if (error || count === null) throw new Error("Couldn't check your free previews. Please try again.");
+  if (count >= FREE_PREVIEWS_PER_DAY) throw new Error(`You've used today's ${FREE_PREVIEWS_PER_DAY} free previews. Generate the full clip instead.`);
+  await recordAIUsage(context, "tts_preview", text.length);
+}
+
 export const generateSpeech = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { text: string; voice: string; style?: string; delivery?: Partial<Delivery> }) => {
+  .inputValidator((d: { text: string; voice: string; style?: string; delivery?: Partial<Delivery>; preview?: boolean }) => {
     const text = String(d.text ?? "").trim();
     if (!text) throw new Error("Write something first.");
     if (text.length > 5000) throw new Error("Keep scripts under 5,000 characters.");
     const voice = (VOICES as readonly string[]).includes(d.voice) ? d.voice : "Kore";
-    return { text, voice, style: String(d.style ?? "").slice(0, 200), delivery: d.delivery ? deliverySettings(d.delivery) : null };
+    return { text, voice, style: String(d.style ?? "").slice(0, 200), delivery: d.delivery ? deliverySettings(d.delivery) : null, preview: d.preview === true };
   })
   .handler(async ({ data, context }) => {
     const style = [data.style, data.delivery ? deliveryPrompt(data.delivery) : ''].filter(Boolean).join('. ');
-    await recordAIUsage(context, "tts", (style ? `${style}: ${data.text}` : data.text).length);
+    if (data.preview) await reservePreview(context, data.text);
+    else await recordAIUsage(context, "tts", (style ? `${style}: ${data.text}` : data.text).length);
     const { spokenPronunciation } = await import('./pronunciation.server');
     const pronounced = await spokenPronunciation(context.supabase, context.userId, data.text);
     const spoken = style ? `${style}: ${pronounced}` : pronounced;
@@ -164,7 +180,8 @@ export const transcribeRecording = createServerFn({ method: "POST" })
     return { text, words };
   });
 
-type TimedWord = { w: string; s: number; e: number };
+/** A timed word. `sp` is a speaker label ("speaker_0", …) when the recording was diarized. */
+type TimedWord = { w: string; s: number; e: number; sp?: string };
 
 function cleanWords(list: unknown): TimedWord[] {
   if (!Array.isArray(list)) return [];
@@ -175,7 +192,9 @@ function cleanWords(list: unknown): TimedWord[] {
     const e = Number(x?.e ?? x?.end);
     if (!w || !isFinite(s) || !isFinite(e) || e < s) continue;
     const prev = out[out.length - 1];
-    out.push({ w, s: Math.max(s, prev?.e ?? 0), e: Math.max(e, prev?.e ?? 0) });
+    const rawSp = x?.sp ?? x?.speaker_id ?? x?.speaker;
+    const sp = rawSp === undefined || rawSp === null || rawSp === "" ? undefined : String(rawSp).slice(0, 40);
+    out.push({ w, s: Math.max(s, prev?.e ?? 0), e: Math.max(e, prev?.e ?? 0), ...(sp ? { sp } : {}) });
   }
   return out;
 }
@@ -187,10 +206,11 @@ async function wordTimings(file: File, context: { supabase: SupabaseClient<Datab
     const fd = new FormData();
     fd.append("file", file, file.name);
     fd.append("model_id", "scribe_v2");
+    fd.append("diarize", "true");
     await recordAIUsage(context, "word_timings_elevenlabs", seconds);
     const r = await fetch("https://api.elevenlabs.io/v1/speech-to-text", { method: "POST", headers: { "xi-api-key": eleven }, body: fd });
     if (r.ok) {
-      const j = (await r.json()) as { words?: { text: string; start: number; end: number; type?: string }[] };
+      const j = (await r.json()) as { words?: { text: string; start: number; end: number; type?: string; speaker_id?: string }[] };
       const words = cleanWords((j.words ?? []).filter((w) => (w.type ?? "word") === "word"));
       if (words.length) return words;
     }
@@ -213,7 +233,7 @@ async function wordTimings(file: File, context: { supabase: SupabaseClient<Datab
           content: [
             {
               type: "text",
-              text: 'Transcribe this recording verbatim, including filler words (um, uh), and time every word precisely to 0.01 seconds from the start of the file. Return ONLY JSON: {"words":[{"w":"word","s":start,"e":end}]}',
+              text: 'Transcribe this recording verbatim, including filler words (um, uh), and time every word precisely to 0.01 seconds from the start of the file. If more than one person speaks, label each word with its speaker as "sp": "speaker_0", "speaker_1", … in order of first appearance. Return ONLY JSON: {"words":[{"w":"word","s":start,"e":end,"sp":"speaker_0"}]}',
             },
             { type: "input_audio", input_audio: { data: btoa(bin), format } },
           ],
@@ -257,10 +277,32 @@ export const cloneMyVoice = createServerFn({ method: "POST" })
     if (!(file instanceof File) || !file.size) throw new Error("Upload a recording.");
     if (file.size > MAX_UPLOAD) throw new Error("Recordings must be under 25 MB.");
     if (!file.type.startsWith("audio/") && !file.type.startsWith("video/")) throw new Error("That file isn't audio or video.");
-    return { file, name: String(d.get("name") ?? "My voice").trim().slice(0, 80) || "My voice" };
+    const consentAudio = d.get("consent_audio");
+    if (!(consentAudio instanceof File) || !consentAudio.size) throw new Error("Record the consent sentence first.");
+    if (consentAudio.size > 5 * 1024 * 1024) throw new Error("The consent recording is too long.");
+    if (!consentAudio.type.startsWith("audio/") && !consentAudio.type.startsWith("video/")) throw new Error("The consent recording isn't audio.");
+    const speaker = String(d.get("consent_name") ?? "").trim().slice(0, 80);
+    if (!speaker) throw new Error("Enter the speaker's name for the consent sentence.");
+    return { file, consentAudio, speaker, name: String(d.get("name") ?? "My voice").trim().slice(0, 80) || "My voice" };
   })
   .handler(async ({ data, context }) => {
     await recordAIUsage(context, "voice_clone", 1);
+    // 1. Check the spoken consent before copying anything.
+    const cform = new FormData();
+    cform.append("model", "openai/gpt-transcribe");
+    cform.append("file", data.consentAudio, data.consentAudio.name || "consent.webm");
+    cform.append("response_format", "json");
+    const heard = await fetch(`${GATEWAY}/v1/audio/transcriptions`, { method: "POST", headers: { Authorization: `Bearer ${key()}` }, body: cform });
+    if (!heard.ok) throw await failure(heard);
+    const transcript = String(((await heard.json()) as { text?: string }).text ?? "");
+    if (!consentMatches(transcript, data.speaker)) {
+      throw new Error("The consent recording didn't match the sentence. Read it clearly, word for word, and try again.");
+    }
+    // 2. Keep the consent recording with the voice.
+    const ext = data.consentAudio.type.includes("mp4") ? "m4a" : data.consentAudio.type.includes("wav") ? "wav" : data.consentAudio.type.includes("mpeg") ? "mp3" : "webm";
+    const consentPath = `${context.userId}/consent/${crypto.randomUUID()}.${ext}`;
+    const stored = await context.supabase.storage.from("clips").upload(consentPath, data.consentAudio, { contentType: data.consentAudio.type || "audio/webm" });
+    if (stored.error) throw new Error("Couldn't save the consent recording. Please try again.");
     const form = new FormData();
     form.append("name", `Vocalis – ${data.file.name}`.slice(0, 100));
     form.append("files", data.file, data.file.name);
@@ -270,17 +312,21 @@ export const cloneMyVoice = createServerFn({ method: "POST" })
       headers: { "xi-api-key": elevenKey() },
       body: form,
     });
-    if (!res.ok) throw await elevenFailure(res);
+    if (!res.ok) {
+      await context.supabase.storage.from("clips").remove([consentPath]);
+      throw await elevenFailure(res);
+    }
     const j = (await res.json()) as { voice_id: string };
     // Register before returning so closing the browser cannot abandon the clone.
     const { data: row, error } = await context.supabase.from("voices")
-      .insert({ name: data.name, eleven_voice_id: j.voice_id, user_id: context.userId })
+      .insert({ name: data.name, eleven_voice_id: j.voice_id, user_id: context.userId, consent_path: consentPath, consented_at: new Date().toISOString() })
       .select("id").single();
     if (error || !row) {
       const cleanup = await fetch(`${ELEVEN}/v1/voices/${encodeURIComponent(j.voice_id)}`, {
         method: "DELETE", headers: { "xi-api-key": elevenKey() },
       });
       if (!cleanup.ok && cleanup.status !== 404) console.error("Failed to clean up unsaved voice", cleanup.status);
+      await context.supabase.storage.from("clips").remove([consentPath]);
       throw new Error("Couldn't save the copied voice. Please try again.");
     }
     return { id: row.id, voiceId: j.voice_id };
@@ -288,18 +334,21 @@ export const cloneMyVoice = createServerFn({ method: "POST" })
 
 export const speakWithMyVoice = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { text: string; voiceId: string; delivery?: Partial<Delivery> }) => {
+  .inputValidator((d: { text: string; voiceId: string; delivery?: Partial<Delivery>; speed?: number; preview?: boolean }) => {
     const text = String(d.text ?? "").trim();
     if (!text) throw new Error("Write something first.");
     if (text.length > 5000) throw new Error("Keep scripts under 5,000 characters.");
     if (!/^[A-Za-z0-9]{10,40}$/.test(String(d.voiceId))) throw new Error("Invalid voice.");
-    return { text, voiceId: d.voiceId, delivery: d.delivery ? deliverySettings(d.delivery) : null };
+    // Explicit speed (used by dubbing to fit timing) overrides the delivery pace. ElevenLabs accepts 0.7–1.2.
+    const speed = d.speed === undefined ? null : Math.min(1.2, Math.max(0.7, Number(d.speed) || 1));
+    return { text, voiceId: d.voiceId, delivery: d.delivery ? deliverySettings(d.delivery) : null, speed, preview: d.preview === true };
   })
   .handler(async ({ data, context }) => {
     const { data: owned, error } = await context.supabase.from("voices").select("id")
       .eq("eleven_voice_id", data.voiceId).eq("user_id", context.userId).maybeSingle();
     if (error || !owned) throw new Error("Choose one of your saved voices.");
-    await recordAIUsage(context, "cloned_tts", data.text.length);
+    if (data.preview) await reservePreview(context, data.text);
+    else await recordAIUsage(context, "cloned_tts", data.text.length);
     const { spokenPronunciation } = await import('./pronunciation.server');
     const pronounced = await spokenPronunciation(context.supabase, context.userId, data.text);
     const res = await fetch(`${ELEVEN}/v1/text-to-speech/${data.voiceId}?output_format=mp3_44100_128`, {
@@ -308,7 +357,7 @@ export const speakWithMyVoice = createServerFn({ method: "POST" })
       body: JSON.stringify({
         text: data.delivery ? elevenText(pronounced, data.delivery) : pronounced,
         model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.5, similarity_boost: 0.85, use_speaker_boost: true, ...(data.delivery ? { speed: deliverySpeed(data.delivery) } : {}) },
+        voice_settings: { stability: 0.5, similarity_boost: 0.85, use_speaker_boost: true, ...(data.speed !== null ? { speed: data.speed } : data.delivery ? { speed: deliverySpeed(data.delivery) } : {}) },
       }),
     });
     if (!res.ok) throw await elevenFailure(res);

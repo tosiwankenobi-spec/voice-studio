@@ -50,6 +50,27 @@
       "when": 1792505368185,
       "tag": "0006_pronunciation_dictionary",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792505428185,
+      "tag": "0007_product_ads",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792505488185,
+      "tag": "0008_brand_kits",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792505548185,
+      "tag": "0009_voice_consent",
+      "breakpoints": true
     }
   ]
 }

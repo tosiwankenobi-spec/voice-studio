@@ -14,6 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_projects: {
+        Row: {
+          created_at: string
+          id: string
+          product: Json
+          scenes: Json
+          settings: Json
+          source_url: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          product?: Json
+          scenes?: Json
+          settings?: Json
+          source_url?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          product?: Json
+          scenes?: Json
+          settings?: Json
+          source_url?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      brand_kits: {
+        Row: {
+          created_at: string
+          cta: string
+          font: string
+          id: string
+          intro_text: string
+          logo_path: string | null
+          outro_text: string
+          primary_color: string
+          secondary_color: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          cta?: string
+          font?: string
+          id?: string
+          intro_text?: string
+          logo_path?: string | null
+          outro_text?: string
+          primary_color?: string
+          secondary_color?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          cta?: string
+          font?: string
+          id?: string
+          intro_text?: string
+          logo_path?: string | null
+          outro_text?: string
+          primary_color?: string
+          secondary_color?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       clips: {
         Row: {
           created_at: string
@@ -205,6 +280,8 @@ export type Database = {
         Row: {
           created_at: string
           eleven_voice_id: string
+          consent_path: string | null
+          consented_at: string | null
           id: string
           name: string
           sample_path: string | null
@@ -213,6 +290,8 @@ export type Database = {
         Insert: {
           created_at?: string
           eleven_voice_id: string
+          consent_path?: string | null
+          consented_at?: string | null
           id?: string
           name?: string
           sample_path?: string | null
@@ -221,6 +300,8 @@ export type Database = {
         Update: {
           created_at?: string
           eleven_voice_id?: string
+          consent_path?: string | null
+          consented_at?: string | null
           id?: string
           name?: string
           sample_path?: string | null

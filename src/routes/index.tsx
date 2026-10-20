@@ -14,6 +14,11 @@ import { saveClip, saveScript } from "@/lib/library";
 import { supabase } from "@/integrations/supabase/client";
 import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
 import { LineTakes } from '@/components/LineTakes';
+import { CostHint } from "@/components/CostHint";
+import { FREE_PREVIEW_CHARS } from "@/lib/costs";
+import { sentences } from "@/lib/take-delivery";
+import { taggedDownloadUrl } from "@/lib/ai-tag";
+import { download } from "@/lib/media-client";
 import { PronunciationHints } from '@/components/PronunciationHints';
 
 export const Route = createFileRoute("/")({
@@ -44,7 +49,7 @@ function Studio() {
   const [voice, setVoice] = useState<string>("Kore");
   const [style, setStyle] = useState("");
   const [ask, setAsk] = useState("");
-  const [busy, setBusy] = useState<"voice" | "claude" | null>(null);
+  const [busy, setBusy] = useState<"voice" | "claude" | "preview" | null>(null);
   const [takes, setTakes] = useState<Take[]>([]);
   const { user } = useAuth();
   const { script: scriptParam } = Route.useSearch();
@@ -110,6 +115,22 @@ function Studio() {
       toast.success("Claude updated your script");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Claude failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const firstSentence = (sentences(text)[0] ?? "").slice(0, FREE_PREVIEW_CHARS);
+
+  async function runPreview() {
+    if (!user) { toast.error("Sign in to preview voices."); return; }
+    setBusy("preview");
+    try {
+      const r = await speak({ data: { text: firstSentence, voice, style, preview: true } });
+      const url = `data:${r.mime};base64,${r.audio}`;
+      setTakes((t) => [{ id: crypto.randomUUID(), url, voice: `${voice} · free preview`, text: firstSentence }, ...t]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Preview failed");
     } finally {
       setBusy(null);
     }
@@ -226,6 +247,12 @@ function Studio() {
                 </>
               )}
             </Button>
+            <div className="mt-2 flex items-center justify-between">
+              <Button variant="link" size="sm" className="h-auto px-0" disabled={!!busy || !firstSentence || !user} onClick={runPreview}>
+                {busy === "preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}Preview first sentence (free)
+              </Button>
+              <CostHint kind="tts" units={text.length} />
+            </div>
           </div>
 
           <div className="rounded-2xl border bg-card p-6">
@@ -237,9 +264,9 @@ function Studio() {
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
                     <span>Take {takes.length - i} · {t.voice}</span>
                     <div className="flex gap-1">
-                      <a href={t.url} download={`vocalis-take-${takes.length - i}.wav`} aria-label="Download">
+                      <button aria-label="Download" onClick={async () => download(await taggedDownloadUrl(t.url), `vocalis-take-${takes.length - i}.wav`)}>
                         <Download className="h-4 w-4 hover:text-primary" />
-                      </a>
+                      </button>
                       <button aria-label="Delete" onClick={() => setTakes((x) => x.filter((y) => y.id !== t.id))}>
                         <Trash2 className="h-4 w-4 hover:text-destructive" />
                       </button>

@@ -1,7 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import { cloneMyVoice } from "@/lib/studio.functions";
+import type { ConsentRecording } from "@/components/VoiceConsent";
 
-export type SavedVoice = { id: string; name: string; eleven_voice_id: string; sample_path: string | null; created_at: string; sampleUrl: string };
+export type SavedVoice = { id: string; name: string; eleven_voice_id: string; sample_path: string | null; consent_path?: string | null; consented_at?: string | null; created_at: string; sampleUrl: string };
 
 export const PREVIEW_LINE = "Hi! This is a quick preview of how I sound in Vocalis.";
 
@@ -15,12 +16,14 @@ export async function listVoices(): Promise<SavedVoice[]> {
 }
 
 /** Copies a voice from a recording, stores the recording as its preview, and names it. */
-export async function createVoice(file: File, name: string, consent: boolean) {
+export async function createVoice(file: File, name: string, consent: ConsentRecording) {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) throw new Error("Sign in to save voices.");
   const fd = new FormData();
   fd.append("file", file);
-  fd.append("consent", String(consent));
+  fd.append("consent", "true");
+  fd.append("consent_audio", consent.audio);
+  fd.append("consent_name", consent.speaker);
   fd.append("name", name);
   const { id, voiceId } = await cloneMyVoice({ data: fd });
   const ext = file.name.split(".").pop() || "webm";

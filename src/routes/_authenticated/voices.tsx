@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SiteHeader } from "@/components/SiteHeader";
 import { VoicePreview } from "@/components/VoicePreview";
-import { VoiceConsent } from "@/components/VoiceConsent";
+import { VoiceConsent, type ConsentRecording } from "@/components/VoiceConsent";
 import { useMicRecorder } from "@/hooks/useMicRecorder";
 import { createVoice, listVoices, renameVoice } from "@/lib/voices";
 import { deleteMyVoice } from "@/lib/media.functions";
@@ -33,17 +33,19 @@ function Voices() {
   const { data, isLoading, error } = useQuery({ queryKey: ["voices"], queryFn: listVoices });
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [consent, setConsent] = useState(false);
+  const [consent, setConsent] = useState<ConsentRecording | null>(null);
+  const [consentKey, setConsentKey] = useState(0);
   const input = useRef<HTMLInputElement>(null);
 
   async function add(file: File) {
-    if (!consent) { toast.error("Confirm you have permission to copy this voice."); return; }
+    if (!consent) { toast.error("Record the consent sentence first."); return; }
     if (file.size > 25 * 1024 * 1024) { toast.error("Recordings must be under 25 MB."); return; }
     setBusy(true);
     try {
       await createVoice(file, name || "My voice", consent);
       setName("");
-      setConsent(false);
+      setConsent(null);
+      setConsentKey((k) => k + 1);
       toast.success("Voice saved");
       qc.invalidateQueries({ queryKey: ["voices"] });
     } catch (e) {
@@ -84,7 +86,7 @@ function Voices() {
         <section className="mt-6 rounded-2xl border bg-card p-5">
           <h2 className="font-display text-lg font-bold">Add a voice</h2>
           <p className="mt-1 text-xs text-muted-foreground">Best results: 30 seconds to 2 minutes of one person speaking clearly, no music.</p>
-          <VoiceConsent checked={consent} onChange={setConsent} />
+          <VoiceConsent key={consentKey} onChange={setConsent} disabled={busy} />
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. My podcast voice" maxLength={80} />
             <input ref={input} type="file" accept="audio/*,video/*" className="hidden" onChange={(e) => e.target.files?.[0] && add(e.target.files[0])} />
@@ -117,7 +119,7 @@ function Voices() {
                 />
                 <Button size="icon" variant="ghost" aria-label={`Delete ${v.name}`} onClick={() => del(v.id, v.name)}><Trash2 className="h-4 w-4" /></Button>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">Added {new Date(v.created_at).toLocaleDateString()}</p>
+              <p className="mt-2 text-xs text-muted-foreground">Added {new Date(v.created_at).toLocaleDateString()}{v.consented_at ? " · spoken consent on file" : ""}</p>
               <div className="mt-3"><VoicePreview voice={v} /></div>
             </div>
           ))}

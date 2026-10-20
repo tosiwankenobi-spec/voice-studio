@@ -9,7 +9,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { saveClip } from "@/lib/library";
 import { Timeline, type TimelineApi } from "@/components/Timeline";
 import { VoicePreview } from "@/components/VoicePreview";
-import { VoiceConsent } from "@/components/VoiceConsent";
+import { VoiceConsent, type ConsentRecording } from "@/components/VoiceConsent";
+import { SpeakersPanel } from "@/components/SpeakersPanel";
+import { DubPanel } from "@/components/DubPanel";
 import { AISignIn } from "@/components/AISignIn";
 import { audioExtension } from "@/lib/studio-validation";
 import { createVoice, listVoices } from "@/lib/voices";
@@ -66,7 +68,7 @@ function Editor() {
   const [voice, setVoice] = useState<string>("Kore");
   const [busy, setBusy] = useState<"upload" | "speak" | "clean" | "patch" | null>(null);
   const [result, setResult] = useState<string | null>(null);
-  const [consent, setConsent] = useState(false);
+  const [consent, setConsent] = useState<ConsentRecording | null>(null);
   const speakMine = useServerFn(speakWithMyVoice);
   const [file, setFile] = useState<File | null>(null);
   const [myVoiceId, setMyVoiceId] = useState<string | null>(null);
@@ -136,7 +138,7 @@ function Editor() {
     setResult(null);
     setFile(file);
     setMyVoiceId(null);
-    setConsent(false);
+    setConsent(null);
     setVoice(MINE);
     setBusy("upload");
     setWords([]);
@@ -185,7 +187,7 @@ function Editor() {
 
   async function respeak(patchOnly = false) {
     if (!user) { toast.error("Sign in to re-speak recordings."); return; }
-    if (voice === MINE && !myVoiceId && !consent) { toast.error("Confirm you have permission to copy this voice."); return; }
+    if (voice === MINE && !myVoiceId && !consent) { toast.error("Record the consent sentence first."); return; }
     const before = synced.current;
     const span = patchOnly ? changedSpan(before, text) : null;
     if (patchOnly && !span) { toast.error('Rewrite or add a word first.'); return; }
@@ -200,7 +202,8 @@ function Editor() {
         if (!file) throw new Error("Upload a recording first.");
         let id = myVoiceId;
         if (!id) {
-          setStatus("Learning your voice…");
+          if (!consent) throw new Error("Record the consent sentence first.");
+          setStatus("Checking consent and learning your voice…");
           id = (await createVoice(file, file.name.replace(/\.[^.]+$/, ""), consent)).voiceId;
           qc.invalidateQueries({ queryKey: ["voices"] });
           toast.success("Voice saved to My Voices — rename it there.");
@@ -337,7 +340,7 @@ function Editor() {
                 >
                   <Mic className="h-4 w-4" /> My real voice{myVoiceId ? " ✓" : ""}
                 </Button>
-                {voice === MINE && !myVoiceId && <VoiceConsent checked={consent} onChange={setConsent} />}
+                {voice === MINE && !myVoiceId && <VoiceConsent key={original?.url ?? "none"} onChange={setConsent} disabled={!!busy} />}
                 {user && (saved.data?.length ?? 0) > 0 && (
                   <div className="mt-4">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -381,6 +384,8 @@ function Editor() {
                   </div>
                 )}
               </div>
+              <SpeakersPanel words={words} sourceUrl={original.url} />
+              <DubPanel text={text} sourceUrl={original.url} />
             </aside>
           </div>
           </>

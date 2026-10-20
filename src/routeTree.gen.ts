@@ -11,13 +11,18 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AdRouteImport } from './routes/ad'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AvatarRouteImport } from './routes/avatar'
+import { Route as DialogueRouteImport } from './routes/dialogue'
 import { Route as EditorRouteImport } from './routes/editor'
 import { Route as ImagesRouteImport } from './routes/images'
+import { Route as ResponsibleUseRouteImport } from './routes/responsible-use'
 import { Route as VideoRouteImport } from './routes/video'
+import { Route as AuthenticatedBrandRouteImport } from './routes/_authenticated/brand'
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
 import { Route as AuthenticatedPronunciationsRouteImport } from './routes/_authenticated/pronunciations'
+import { Route as AuthenticatedUsageRouteImport } from './routes/_authenticated/usage'
 import { Route as AuthenticatedVoicesRouteImport } from './routes/_authenticated/voices'
 import { Route as ApiGenerateImageRouteImport } from './routes/api/generate-image'
 
@@ -30,6 +35,11 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdRoute = AdRouteImport.update({
+  id: '/ad',
+  path: '/ad',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -38,6 +48,11 @@ const AuthRoute = AuthRouteImport.update({
 const AvatarRoute = AvatarRouteImport.update({
   id: '/avatar',
   path: '/avatar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DialogueRoute = DialogueRouteImport.update({
+  id: '/dialogue',
+  path: '/dialogue',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EditorRoute = EditorRouteImport.update({
@@ -50,10 +65,20 @@ const ImagesRoute = ImagesRouteImport.update({
   path: '/images',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResponsibleUseRoute = ResponsibleUseRouteImport.update({
+  id: '/responsible-use',
+  path: '/responsible-use',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VideoRoute = VideoRouteImport.update({
   id: '/video',
   path: '/video',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedBrandRoute = AuthenticatedBrandRouteImport.update({
+  id: '/brand',
+  path: '/brand',
+  getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
   id: '/library',
@@ -66,6 +91,11 @@ const AuthenticatedPronunciationsRoute =
     path: '/pronunciations',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedUsageRoute = AuthenticatedUsageRouteImport.update({
+  id: '/usage',
+  path: '/usage',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedVoicesRoute = AuthenticatedVoicesRouteImport.update({
   id: '/voices',
   path: '/voices',
@@ -79,25 +109,35 @@ const ApiGenerateImageRoute = ApiGenerateImageRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/ad': typeof AdRoute
   '/auth': typeof AuthRoute
   '/avatar': typeof AvatarRoute
+  '/dialogue': typeof DialogueRoute
   '/editor': typeof EditorRoute
   '/images': typeof ImagesRoute
+  '/responsible-use': typeof ResponsibleUseRoute
   '/video': typeof VideoRoute
+  '/brand': typeof AuthenticatedBrandRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/pronunciations': typeof AuthenticatedPronunciationsRoute
+  '/usage': typeof AuthenticatedUsageRoute
   '/voices': typeof AuthenticatedVoicesRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/ad': typeof AdRoute
   '/auth': typeof AuthRoute
   '/avatar': typeof AvatarRoute
+  '/dialogue': typeof DialogueRoute
   '/editor': typeof EditorRoute
   '/images': typeof ImagesRoute
+  '/responsible-use': typeof ResponsibleUseRoute
   '/video': typeof VideoRoute
+  '/brand': typeof AuthenticatedBrandRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/pronunciations': typeof AuthenticatedPronunciationsRoute
+  '/usage': typeof AuthenticatedUsageRoute
   '/voices': typeof AuthenticatedVoicesRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
@@ -105,13 +145,18 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
+  '/ad': typeof AdRoute
   '/auth': typeof AuthRoute
   '/avatar': typeof AvatarRoute
+  '/dialogue': typeof DialogueRoute
   '/editor': typeof EditorRoute
   '/images': typeof ImagesRoute
+  '/responsible-use': typeof ResponsibleUseRoute
   '/video': typeof VideoRoute
+  '/_authenticated/brand': typeof AuthenticatedBrandRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/_authenticated/pronunciations': typeof AuthenticatedPronunciationsRoute
+  '/_authenticated/usage': typeof AuthenticatedUsageRoute
   '/_authenticated/voices': typeof AuthenticatedVoicesRoute
   '/api/generate-image': typeof ApiGenerateImageRoute
 }
@@ -119,38 +164,53 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/ad'
     | '/auth'
     | '/avatar'
+    | '/dialogue'
     | '/editor'
     | '/images'
+    | '/responsible-use'
     | '/video'
+    | '/brand'
     | '/library'
     | '/pronunciations'
+    | '/usage'
     | '/voices'
     | '/api/generate-image'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/ad'
     | '/auth'
     | '/avatar'
+    | '/dialogue'
     | '/editor'
     | '/images'
+    | '/responsible-use'
     | '/video'
+    | '/brand'
     | '/library'
     | '/pronunciations'
+    | '/usage'
     | '/voices'
     | '/api/generate-image'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
+    | '/ad'
     | '/auth'
     | '/avatar'
+    | '/dialogue'
     | '/editor'
     | '/images'
+    | '/responsible-use'
     | '/video'
+    | '/_authenticated/brand'
     | '/_authenticated/library'
     | '/_authenticated/pronunciations'
+    | '/_authenticated/usage'
     | '/_authenticated/voices'
     | '/api/generate-image'
   fileRoutesById: FileRoutesById
@@ -158,10 +218,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
+  AdRoute: typeof AdRoute
   AuthRoute: typeof AuthRoute
   AvatarRoute: typeof AvatarRoute
+  DialogueRoute: typeof DialogueRoute
   EditorRoute: typeof EditorRoute
   ImagesRoute: typeof ImagesRoute
+  ResponsibleUseRoute: typeof ResponsibleUseRoute
   VideoRoute: typeof VideoRoute
   ApiGenerateImageRoute: typeof ApiGenerateImageRoute
 }
@@ -182,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/ad': {
+      id: '/ad'
+      path: '/ad'
+      fullPath: '/ad'
+      preLoaderRoute: typeof AdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -194,6 +264,13 @@ declare module '@tanstack/react-router' {
       path: '/avatar'
       fullPath: '/avatar'
       preLoaderRoute: typeof AvatarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dialogue': {
+      id: '/dialogue'
+      path: '/dialogue'
+      fullPath: '/dialogue'
+      preLoaderRoute: typeof DialogueRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/editor': {
@@ -210,12 +287,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/responsible-use': {
+      id: '/responsible-use'
+      path: '/responsible-use'
+      fullPath: '/responsible-use'
+      preLoaderRoute: typeof ResponsibleUseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/video': {
       id: '/video'
       path: '/video'
       fullPath: '/video'
       preLoaderRoute: typeof VideoRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/brand': {
+      id: '/_authenticated/brand'
+      path: '/brand'
+      fullPath: '/brand'
+      preLoaderRoute: typeof AuthenticatedBrandRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/library': {
       id: '/_authenticated/library'
@@ -229,6 +320,13 @@ declare module '@tanstack/react-router' {
       path: '/pronunciations'
       fullPath: '/pronunciations'
       preLoaderRoute: typeof AuthenticatedPronunciationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/usage': {
+      id: '/_authenticated/usage'
+      path: '/usage'
+      fullPath: '/usage'
+      preLoaderRoute: typeof AuthenticatedUsageRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/voices': {
@@ -249,14 +347,18 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteRouteChildren {
+  AuthenticatedBrandRoute: typeof AuthenticatedBrandRoute
   AuthenticatedLibraryRoute: typeof AuthenticatedLibraryRoute
   AuthenticatedPronunciationsRoute: typeof AuthenticatedPronunciationsRoute
+  AuthenticatedUsageRoute: typeof AuthenticatedUsageRoute
   AuthenticatedVoicesRoute: typeof AuthenticatedVoicesRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedBrandRoute: AuthenticatedBrandRoute,
   AuthenticatedLibraryRoute: AuthenticatedLibraryRoute,
   AuthenticatedPronunciationsRoute: AuthenticatedPronunciationsRoute,
+  AuthenticatedUsageRoute: AuthenticatedUsageRoute,
   AuthenticatedVoicesRoute: AuthenticatedVoicesRoute,
 }
 
@@ -266,10 +368,13 @@ const AuthenticatedRouteRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
+  AdRoute: AdRoute,
   AuthRoute: AuthRoute,
   AvatarRoute: AvatarRoute,
+  DialogueRoute: DialogueRoute,
   EditorRoute: EditorRoute,
   ImagesRoute: ImagesRoute,
+  ResponsibleUseRoute: ResponsibleUseRoute,
   VideoRoute: VideoRoute,
   ApiGenerateImageRoute: ApiGenerateImageRoute,
 }
