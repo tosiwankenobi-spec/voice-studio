@@ -1,5 +1,5 @@
 import { Coins } from "lucide-react";
-import { costLabel, creditsFor } from "@/lib/costs";
+import { costLabel, requestCredits } from "@/lib/costs";
 import type { UsageKind } from "@/lib/usage";
 
 /** "≈ N credits" shown next to a generate button, so nobody is surprised by what an action costs. */
@@ -10,11 +10,11 @@ export function CostHint({
   className = "",
 }: {
   kind: UsageKind;
-  units: number;
+  units: number | readonly number[];
   times?: number;
   className?: string;
 }) {
-  const credits = creditsFor(kind, units) * times;
+  const credits = requestCredits(kind, units) * times;
   return (
     <span
       className={`inline-flex items-center gap-1 text-xs text-muted-foreground ${className}`}

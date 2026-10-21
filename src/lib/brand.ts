@@ -99,30 +99,32 @@ export async function saveBrand(kit: BrandKit, logo?: File | null) {
     const path = `${u.user.id}/brand/logo-${crypto.randomUUID()}.${ext}`;
     const up = await supabase.storage.from("clips").upload(path, logo, { contentType: logo.type });
     if (up.error) throw up.error;
-    if (logoPath) await supabase.storage.from("clips").remove([logoPath]);
     logoPath = path;
   }
   const k = cleanBrand({ ...kit, logoPath });
-  const { error } = await supabase
-    .from("brand_kits")
-    .upsert(
-      {
-        user_id: u.user.id,
-        primary_color: k.primary,
-        secondary_color: k.secondary,
-        font: k.font,
-        intro_text: k.introText,
-        outro_text: k.outroText,
-        cta: k.cta,
-        logo_path: k.logoPath,
-      },
-      { onConflict: "user_id" },
-    );
-  if (error) throw error;
+  const { error } = await supabase.from("brand_kits").upsert(
+    {
+      user_id: u.user.id,
+      primary_color: k.primary,
+      secondary_color: k.secondary,
+      font: k.font,
+      intro_text: k.introText,
+      outro_text: k.outroText,
+      cta: k.cta,
+      logo_path: k.logoPath,
+    },
+    { onConflict: "user_id" },
+  );
+  if (error) {
+    if (logo && logoPath) await supabase.storage.from("clips").remove([logoPath]);
+    throw error;
+  }
+  if (logo && kit.logoPath) await supabase.storage.from("clips").remove([kit.logoPath]);
   return k;
 }
 
 export async function removeLogo(kit: BrandKit) {
+  const saved = await saveBrand({ ...kit, logoPath: null });
   if (kit.logoPath) await supabase.storage.from("clips").remove([kit.logoPath]);
-  return saveBrand({ ...kit, logoPath: null });
+  return saved;
 }

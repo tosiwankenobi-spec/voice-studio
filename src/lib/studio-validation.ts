@@ -17,7 +17,12 @@ export function consentSentence(name: string) {
   return `I, ${name.trim() || "[your name]"}, confirm this is my voice and I consent to Vocalis creating a digital copy of it.`;
 }
 
-const consentTokens = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}'\s]/gu, " ").split(/\s+/).filter(Boolean);
+const consentTokens = (t: string) =>
+  t
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
+    .split(/\s+/)
+    .filter(Boolean);
 
 /**
  * True when a transcript of the consent recording matches the consent sentence closely enough.

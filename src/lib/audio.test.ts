@@ -9,10 +9,10 @@ const base: Segment[] = [
 ];
 
 describe("timeline edits", () => {
-  it('keeps patch identity after splitting or cutting a patched region', () => {
-    const patch = [{ id: 'patch', start: 0, end: 4, patchId: 'p1' }];
-    expect(splitAt(patch, 2, id).map(s => s.patchId)).toEqual(['p1', 'p1']);
-    expect(cutSource(patch, 1, 2, id).map(s => s.patchId)).toEqual(['p1', 'p1']);
+  it("keeps patch identity after splitting or cutting a patched region", () => {
+    const patch = [{ id: "patch", start: 0, end: 4, patchId: "p1" }];
+    expect(splitAt(patch, 2, id).map((s) => s.patchId)).toEqual(["p1", "p1"]);
+    expect(cutSource(patch, 1, 2, id).map((s) => s.patchId)).toEqual(["p1", "p1"]);
   });
   it("splitting keeps total length and cuts at the playhead", () => {
     const out = splitAt(base, 1.5, id);
@@ -52,11 +52,18 @@ describe("word-aware edits", () => {
     const { a, b } = wordRange(words, 1);
     expect([a, b]).toEqual([0.8, 1.4]);
     const out = cutSource(whole, a, b, id);
-    expect(out.map((s) => [s.start, s.end])).toEqual([[0, 0.8], [1.4, 3]]);
+    expect(out.map((s) => [s.start, s.end])).toEqual([
+      [0, 0.8],
+      [1.4, 3],
+    ]);
     expect(wordsOnTimeline(out, words).map((x) => words[x.i]!.w)).toEqual(["hello", "world"]);
   });
   it("words follow the timeline after rearranging", () => {
     const parts = splitAtWord(whole, 1.5, words, id);
-    expect(wordsOnTimeline(move(parts, 1, 0), words).map((x) => words[x.i]!.w)).toEqual(["world", "hello", "um"]);
+    expect(wordsOnTimeline(move(parts, 1, 0), words).map((x) => words[x.i]!.w)).toEqual([
+      "world",
+      "hello",
+      "um",
+    ]);
   });
 });

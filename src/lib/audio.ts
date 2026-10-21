@@ -10,7 +10,8 @@ export function locate(segs: Segment[], t: number) {
     const s = segs[i];
     if (!s) continue;
     const len = segLen(s);
-    if (t < acc + len || i === segs.length - 1) return { index: i, offset: Math.min(Math.max(t - acc, 0), len), startAt: acc };
+    if (t < acc + len || i === segs.length - 1)
+      return { index: i, offset: Math.min(Math.max(t - acc, 0), len), startAt: acc };
     acc += len;
   }
   return null;
@@ -25,7 +26,12 @@ export function splitAt(segs: Segment[], t: number, makeId: () => string): Segme
   if (hit.offset < 0.05 || segLen(s) - hit.offset < 0.05) return segs;
   const cut = s.start + hit.offset;
   const out = segs.slice();
-  out.splice(hit.index, 1, { ...s, id: makeId(), start: s.start, end: cut }, { ...s, id: makeId(), start: cut, end: s.end });
+  out.splice(
+    hit.index,
+    1,
+    { ...s, id: makeId(), start: s.start, end: cut },
+    { ...s, id: makeId(), start: cut, end: s.end },
+  );
   return out;
 }
 
@@ -56,7 +62,8 @@ export function encodeWav(buf: AudioBuffer): Blob {
   const ch = buf.numberOfChannels;
   const n = buf.length;
   const data = new DataView(new ArrayBuffer(44 + n * ch * 2));
-  const w = (o: number, s: string) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
+  const w = (o: number, s: string) =>
+    [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
   w(0, "RIFF");
   data.setUint32(4, 36 + n * ch * 2, true);
   w(8, "WAVE");
@@ -127,7 +134,13 @@ export function quietestNear(buffer: AudioBuffer, t: number, radius = 0.3) {
 }
 
 /** Split at the word gap nearest to timeline time t (falls back to exact time when no words). */
-export function splitAtWord(segs: Segment[], t: number, words: Word[], makeId: () => string, refine?: (src: number) => number) {
+export function splitAtWord(
+  segs: Segment[],
+  t: number,
+  words: Word[],
+  makeId: () => string,
+  refine?: (src: number) => number,
+) {
   const loc = toSource(segs, t);
   if (!loc || !words.length) return splitAt(segs, t, makeId);
   const s = segs[loc.index]!;
@@ -142,7 +155,10 @@ export function splitAtWord(segs: Segment[], t: number, words: Word[], makeId: (
 export function cutSource(segs: Segment[], a: number, b: number, makeId: () => string): Segment[] {
   const out: Segment[] = [];
   for (const s of segs) {
-    if (b <= s.start || a >= s.end) { out.push(s); continue; }
+    if (b <= s.start || a >= s.end) {
+      out.push(s);
+      continue;
+    }
     if (a - s.start > 0.01) out.push({ ...s, id: makeId(), start: s.start, end: a });
     if (s.end - b > 0.01) out.push({ ...s, id: makeId(), start: b, end: s.end });
   }
@@ -174,15 +190,21 @@ const tokens = (t: string) => t.split(/\s+/).map(norm).filter(Boolean);
 
 /** Pairs of matching positions (i in a, j in b) from a longest common subsequence. */
 export function lcsPairs(a: string[], b: string[]) {
-  const n = a.length, m = b.length;
+  const n = a.length,
+    m = b.length;
   const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
-    dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i]![j] = a[i] === b[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
   const out: [number, number][] = [];
-  let i = 0, j = 0;
+  let i = 0,
+    j = 0;
   while (i < n && j < m) {
-    if (a[i] === b[j]) { out.push([i, j]); i++; j++; }
-    else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) i++;
+    if (a[i] === b[j]) {
+      out.push([i, j]);
+      i++;
+      j++;
+    } else if (dp[i + 1]![j]! >= dp[i]![j + 1]!) i++;
     else j++;
   }
   return out;
@@ -194,18 +216,26 @@ export function lcsPairs(a: string[], b: string[]) {
  */
 /** True when `newText` only removes whole words from `oldText`. */
 export function isPureDeletion(oldText: string, newText: string) {
-  const a = tokens(oldText), b = tokens(newText);
+  const a = tokens(oldText),
+    b = tokens(newText);
   return lcsPairs(a, b).length === b.length;
 }
 
-export function deletedTimelineWords(oldText: string, newText: string, timelineWords: string[]): number[] {
-  const a = tokens(oldText), b = tokens(newText);
+export function deletedTimelineWords(
+  oldText: string,
+  newText: string,
+  timelineWords: string[],
+): number[] {
+  const a = tokens(oldText),
+    b = tokens(newText);
   if (b.length >= a.length) return [];
   const keep = lcsPairs(a, b);
   if (keep.length !== b.length) return []; // something was added or rewritten
   const kept = new Set(keep.map(([i]) => i));
   const toWord = new Map(lcsPairs(a, timelineWords.map(norm)));
   const out: number[] = [];
-  a.forEach((_, i) => { if (!kept.has(i) && toWord.has(i)) out.push(toWord.get(i)!); });
+  a.forEach((_, i) => {
+    if (!kept.has(i) && toWord.has(i)) out.push(toWord.get(i)!);
+  });
   return out;
 }

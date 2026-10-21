@@ -15,7 +15,13 @@ const LENGTHS = [
 ];
 const TONES = ["Friendly", "Professional", "Energetic", "Calm", "Funny", "Inspiring", "Dramatic"];
 
-export function ScriptGenerator({ onScript, disabled }: { onScript: (s: string) => void; disabled?: boolean }) {
+export function ScriptGenerator({
+  onScript,
+  disabled,
+}: {
+  onScript: (s: string) => void;
+  disabled?: boolean;
+}) {
   const claude = useServerFn(askClaude);
   const [topic, setTopic] = useState("");
   const [length, setLength] = useState(1);
@@ -46,11 +52,21 @@ export function ScriptGenerator({ onScript, disabled }: { onScript: (s: string) 
       <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
         <PenLine className="h-4 w-4 text-primary" /> Write a script for me
       </div>
-      <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="What's it about? e.g. launching our new coffee shop" maxLength={300} />
+      <Input
+        value={topic}
+        onChange={(e) => setTopic(e.target.value)}
+        placeholder="What's it about? e.g. launching our new coffee shop"
+        maxLength={300}
+      />
       <div className="mt-3 text-xs text-muted-foreground">Length</div>
       <div className="mt-1 flex flex-wrap gap-2">
         {LENGTHS.map((l, i) => (
-          <Button key={l.label} size="sm" variant={length === i ? "default" : "outline"} onClick={() => setLength(i)}>
+          <Button
+            key={l.label}
+            size="sm"
+            variant={length === i ? "default" : "outline"}
+            onClick={() => setLength(i)}
+          >
             {l.label}
           </Button>
         ))}
@@ -58,7 +74,12 @@ export function ScriptGenerator({ onScript, disabled }: { onScript: (s: string) 
       <div className="mt-3 text-xs text-muted-foreground">Tone</div>
       <div className="mt-1 flex flex-wrap gap-2">
         {TONES.map((t) => (
-          <Button key={t} size="sm" variant={tone === t ? "default" : "outline"} onClick={() => setTone(t)}>
+          <Button
+            key={t}
+            size="sm"
+            variant={tone === t ? "default" : "outline"}
+            onClick={() => setTone(t)}
+          >
             {t}
           </Button>
         ))}

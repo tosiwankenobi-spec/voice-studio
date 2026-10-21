@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -42,6 +42,9 @@ import { listVoices } from "@/lib/voices";
 import { streamImage } from "@/lib/stream-image";
 import { audioSeconds, exportVideo } from "@/lib/video-export";
 import { download } from "@/lib/media-client";
+import { saveAdProject, restoreAdScenes, type AdProjectScene } from "@/lib/ad-project";
+import { speechUnits } from "@/lib/costs";
+import type { Json } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/ad")({
   head: () => ({
@@ -64,13 +67,13 @@ export const Route = createFileRoute("/ad")({
   component: ProductAd,
 });
 
-type Scene = AdScene & {
-  id: string;
-  audio?: string | undefined;
-  seconds?: number | undefined;
-  aiImage?: string | undefined;
-  busy?: string | undefined;
-};
+type Scene = AdProjectScene;
+const speechStyle = (tone: string) =>
+  tone === "energetic"
+    ? "Say with energy and excitement"
+    : tone === "premium"
+      ? "Say smoothly and confidently"
+      : "";
 type Settings = { seconds: number; tone: string; voice: string; badge: boolean };
 const STORAGE = "storage:";
 
@@ -101,25 +104,59 @@ function ProductAd() {
 
   const [url, setUrl] = useState("");
   const [product, setProduct] = useState<Product>(EMPTY_PRODUCT);
-  const [settings, setSettings] = useState<Settings>({
+  const [settings, updateSettings] = useState<Settings>({
     seconds: 30,
     tone: "friendly",
     voice: "Kore",
     badge: true,
   });
-  const [scenes, setScenes] = useState<Scene[]>([]);
+  const [scenes, updateScenes] = useState<Scene[]>([]);
   const [adId, setAdId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<{ url: string; blob: Blob } | null>(null);
+  const setScenes: typeof updateScenes = (next) => {
+    setResult(null);
+    updateScenes(next);
+  };
+  const setSettings: typeof updateSettings = (next) => {
+    setResult(null);
+    updateSettings(next);
+  };
+  const exportKey = JSON.stringify(exportOpts);
+  useEffect(() => {
+    setResult(null);
+  }, [exportKey]);
   const imageCache = useRef(new Map<string, string>());
   const scenesRef = useRef(scenes);
   scenesRef.current = scenes;
   const abort = useRef<AbortController | null>(null);
   const upload = useRef<HTMLInputElement>(null);
 
-  const patch = (id: string, p: Partial<Scene>) =>
-    setScenes((xs) => xs.map((x) => (x.id === id ? { ...x, ...p } : x)));
-  const setP = (p: Partial<Product>) => setProduct((x) => ({ ...x, ...p }));
+  useEffect(
+    () => () => {
+      if (result) URL.revokeObjectURL(result.url);
+    },
+    [result],
+  );
+  const patch = (id: string, p: Partial<Scene>) => {
+    setResult(null);
+    setScenes((xs) =>
+      xs.map((x) =>
+        x.id === id
+          ? {
+              ...x,
+              ...p,
+              ...("audio" in p ? { audioPath: undefined } : {}),
+              ...("aiImage" in p ? { aiImagePath: undefined } : {}),
+            }
+          : x,
+      ),
+    );
+  };
+  const setP = (p: Partial<Product>) => {
+    setResult(null);
+    setProduct((x) => ({ ...x, ...p }));
+  };
 
   /** A canvas-safe source for a product image: data URL for outside links, signed URL for uploads. */
   async function imageSrc(src: string) {
@@ -233,12 +270,7 @@ function ProductAd() {
           data: {
             text: s.narration,
             voice: settings.voice,
-            style:
-              settings.tone === "energetic"
-                ? "Say with energy and excitement"
-                : settings.tone === "premium"
-                  ? "Say smoothly and confidently"
-                  : "",
+            style: speechStyle(settings.tone),
           },
         });
     const audio = `data:${r.mime};base64,${r.audio}`;
@@ -303,7 +335,6 @@ function ProductAd() {
         badge: settings.badge ? priceLabel(product) : undefined,
         signal: ctrl.signal,
       });
-      if (result) URL.revokeObjectURL(result.url);
       setResult({ url: URL.createObjectURL(blob), blob });
       toast.success("Your ad is ready");
     } catch (e) {
@@ -318,29 +349,29 @@ function ProductAd() {
     if (!user) return;
     setBusy("save");
     try {
-      const row = {
-        source_url: product.url || url,
-        product: product as unknown as never,
-        scenes: scenes.map(({ narration, image, imagePrompt, motion }) => ({
-          narration,
-          image,
-          imagePrompt,
-          motion,
-        })) as unknown as never,
-        settings: settings as unknown as never,
-      };
-      if (adId) {
-        const { error } = await supabase.from("ad_projects").update(row).eq("id", adId);
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase
-          .from("ad_projects")
-          .insert(row)
-          .select("id")
-          .single();
-        if (error) throw error;
-        setAdId(data.id);
-      }
+      const snapshot = scenes;
+      const saved = await saveAdProject({
+        userId: user.id,
+        id: adId,
+        sourceUrl: product.url || url,
+        product: product as unknown as Json,
+        settings: settings as unknown as Json,
+        scenes: snapshot,
+      });
+      setAdId(saved.id);
+      setScenes((current) =>
+        current.map((scene) => {
+          const before = snapshot.find((s) => s.id === scene.id);
+          const stored = saved.scenes.find((s) => s.id === scene.id);
+          return stored && before
+            ? {
+                ...scene,
+                ...(scene.audio === before.audio ? { audioPath: stored.audioPath } : {}),
+                ...(scene.aiImage === before.aiImage ? { aiImagePath: stored.aiImagePath } : {}),
+              }
+            : scene;
+        }),
+      );
       qc.invalidateQueries({ queryKey: ["ads"] });
       toast.success("Ad saved");
     } catch (e) {
@@ -360,11 +391,19 @@ function ProductAd() {
       toast.error("Couldn't open that ad");
       return;
     }
+    if (!user) return;
+    let restored: Scene[];
+    try {
+      restored = await restoreAdScenes(data.scenes, user.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not restore ad assets.");
+      return;
+    }
     const p = { ...EMPTY_PRODUCT, ...(data.product as Partial<Product>) };
     setProduct(p);
     setUrl(data.source_url);
     setSettings((s) => ({ ...s, ...(data.settings as Partial<Settings>) }));
-    setScenes(((data.scenes as AdScene[]) ?? []).map((s) => ({ ...s, id: crypto.randomUUID() })));
+    setScenes(restored);
     setAdId(data.id);
     setResult(null);
     void loadThumbs(p.images);
@@ -379,13 +418,11 @@ function ProductAd() {
         .from("clips")
         .upload(path, result.blob, { contentType: result.blob.type });
       if (up.error) throw up.error;
-      const { error } = await supabase
-        .from("media")
-        .insert({
-          kind: "video",
-          prompt: `Product ad: ${product.title}`.slice(0, 2000),
-          storage_path: path,
-        });
+      const { error } = await supabase.from("media").insert({
+        kind: "video",
+        prompt: `Product ad: ${product.title}`.slice(0, 2000),
+        storage_path: path,
+      });
       if (error) {
         await supabase.storage.from("clips").remove([path]);
         throw error;
@@ -398,7 +435,13 @@ function ProductAd() {
     }
   }
 
-  const chars = scenes.filter((s) => !s.audio).reduce((a, s) => a + s.narration.length, 0);
+  const chars = scenes
+    .filter((s) => !s.audio)
+    .map((s) =>
+      settings.voice.startsWith("saved:")
+        ? s.narration.length
+        : speechUnits(s.narration, speechStyle(settings.tone)),
+    );
   const aiShots = scenes.filter((s) => s.image === null && !s.aiImage).length;
   const ready =
     scenes.length > 0 && scenes.every((s) => s.audio && (s.image !== null || s.aiImage));
@@ -572,7 +615,17 @@ function ProductAd() {
                     key={t}
                     size="sm"
                     variant={settings.tone === t ? "default" : "outline"}
-                    onClick={() => setSettings((s) => ({ ...s, tone: t }))}
+                    onClick={() => {
+                      setSettings((s) => ({ ...s, tone: t }));
+                      setScenes((xs) =>
+                        xs.map((x) => ({
+                          ...x,
+                          audio: undefined,
+                          audioPath: undefined,
+                          seconds: undefined,
+                        })),
+                      );
+                    }}
                     className="capitalize"
                   >
                     {t}
@@ -587,7 +640,12 @@ function ProductAd() {
                 onChange={(e) => {
                   setSettings((s) => ({ ...s, voice: e.target.value }));
                   setScenes((xs) =>
-                    xs.map((x) => ({ ...x, audio: undefined, seconds: undefined })),
+                    xs.map((x) => ({
+                      ...x,
+                      audio: undefined,
+                      audioPath: undefined,
+                      seconds: undefined,
+                    })),
                   );
                 }}
                 className="mt-2 h-9 w-full rounded-md border bg-background px-3 font-normal"

@@ -46,6 +46,17 @@ export function costLabel(credits: number) {
   return credits === 0 ? "Free" : `≈ ${credits} credit${credits === 1 ? "" : "s"}`;
 }
 
+/** Round each provider request separately, matching the usage ledger. */
+export function requestCredits(kind: UsageKind, units: number | readonly number[]) {
+  return typeof units === "number"
+    ? creditsFor(kind, units)
+    : units.reduce((sum, amount) => sum + creditsFor(kind, amount), 0);
+}
+
+export function speechUnits(text: string, style = "") {
+  return (style ? `${style}: ${text}` : text).length;
+}
+
 export type UsageRow = { kind: string; units: number; created_at: string };
 
 /** Totals for a set of usage rows: per kind, per day (YYYY-MM-DD, local time), and overall. */

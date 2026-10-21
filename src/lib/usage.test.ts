@@ -9,8 +9,13 @@ function setup(count: number | null = 0, readError: unknown = null, writeError: 
   const gt = vi.fn(async () => ({ count, error: readError }));
   const eq = vi.fn(() => ({ gt }));
   const select = vi.fn(() => ({ eq }));
-  const insert = vi.fn(async (row: typeof rows[number]) => { rows.push(row); return { error: writeError }; });
-  const supabase = { from: vi.fn(() => ({ select, insert })) } as unknown as SupabaseClient<Database>;
+  const insert = vi.fn(async (row: (typeof rows)[number]) => {
+    rows.push(row);
+    return { error: writeError };
+  });
+  const supabase = {
+    from: vi.fn(() => ({ select, insert })),
+  } as unknown as SupabaseClient<Database>;
   return { context: { supabase, userId: "owner" }, rows, eq, gt, insert };
 }
 
@@ -39,7 +44,8 @@ describe("AI usage reservations", () => {
     await recordAIUsage(s.context, "video", 8);
     await recordAIUsage(s.context, "transcription", 9.2);
     expect(s.rows.map(({ kind, units }) => ({ kind, units }))).toEqual([
-      { kind: "video", units: 8 }, { kind: "transcription", units: 10 },
+      { kind: "video", units: 8 },
+      { kind: "transcription", units: 10 },
     ]);
   });
   it("stores one unit for Claude and images", async () => {
@@ -47,14 +53,17 @@ describe("AI usage reservations", () => {
     await recordAIUsage(s.context, "claude", 1);
     await recordAIUsage(s.context, "image", 1);
     expect(s.rows.map(({ kind, units }) => ({ kind, units }))).toEqual([
-      { kind: "claude", units: 1 }, { kind: "image", units: 1 },
+      { kind: "claude", units: 1 },
+      { kind: "image", units: 1 },
     ]);
   });
   it("fails closed if counting or saving is unavailable", async () => {
     const s = setup(null, new Error("offline"));
     await expect(recordAIUsage(s.context, "image", 1)).rejects.toThrow("check AI usage");
     expect(s.insert).not.toHaveBeenCalled();
-    await expect(recordAIUsage(setup(0, null, new Error("offline")).context, "image", 1)).rejects.toThrow("record AI usage");
+    await expect(
+      recordAIUsage(setup(0, null, new Error("offline")).context, "image", 1),
+    ).rejects.toThrow("record AI usage");
   });
   it("rejects invalid integer usage amounts", async () => {
     const s = setup();
