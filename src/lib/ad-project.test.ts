@@ -35,6 +35,11 @@ vi.mock("@/integrations/supabase/client", () => ({
       }),
     },
     from: () => ({
+      select: () => ({
+        eq: () => ({
+          single: async () => ({ data: { scenes: state.previous }, error: null }),
+        }),
+      }),
       insert: (row: unknown) => {
         state.row = row;
         return {
