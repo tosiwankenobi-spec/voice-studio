@@ -37,7 +37,9 @@ export async function saveAdProject(input: {
       if (!scene || typeof scene !== "object" || Array.isArray(scene)) return [];
       return [scene.audioPath, scene.aiImagePath].filter(
         (path): path is string =>
-          typeof path === "string" && path.startsWith(`${input.userId}/ads/`) && !path.includes(".."),
+          typeof path === "string" &&
+          path.startsWith(`${input.userId}/ads/`) &&
+          !path.includes(".."),
       );
     });
   const store = async (url: string, kind: "audio" | "image") => {

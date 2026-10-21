@@ -14,11 +14,6 @@ vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     storage: {
       from: () => ({
-      select: () => ({
-        eq: () => ({
-          single: async () => ({ data: { scenes: state.previous }, error: null }),
-        }),
-      }),
         upload: async (path: string) => {
           if (state.uploadFailsAt === state.uploads.length + 1)
             return { error: new Error("Upload failed") };
