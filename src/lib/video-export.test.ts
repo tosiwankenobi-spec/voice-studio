@@ -11,6 +11,7 @@ const state = {
   closed: false,
   stopped: 0,
   loadFails: false,
+  loadDelay: 0,
   loadAbort: null as AbortController | null,
   recordAbort: null as AbortController | null,
 };
@@ -22,6 +23,7 @@ beforeEach(() => {
     closed: false,
     stopped: 0,
     loadFails: false,
+    loadDelay: 0,
     loadAbort: null,
     recordAbort: null,
   });
@@ -45,11 +47,13 @@ beforeEach(() => {
       onerror = () => {};
       set src(value: string) {
         state.events.push("load:" + value);
-        queueMicrotask(() => {
+        const ready = () => {
           if (state.loadAbort) state.loadAbort.abort();
           else if (state.loadFails) this.onerror();
           else this.onload();
-        });
+        };
+        if (state.loadDelay) setTimeout(ready, state.loadDelay);
+        else queueMicrotask(ready);
       }
     },
   );
@@ -122,7 +126,10 @@ beforeEach(() => {
   });
   vi.stubGlobal("cancelAnimationFrame", () => {});
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 it("preloads all images and audio, then schedules narration without per-scene loading gaps", async () => {
   const scenes = [
@@ -171,4 +178,29 @@ it("releases the audio context if a scene image fails to load", async () => {
 it("rejects invalid durations before creating browser resources", async () => {
   await expect(exportVideo([{ seconds: NaN }], () => {})).rejects.toThrow("valid duration");
   expect(state.events).toEqual([]);
+});
+
+it("allows a healthy preload batch to exceed thirty seconds in total", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  state.loadDelay = 20000;
+  const result = exportVideo(
+    [
+      { image: "one.png", seconds: 1 },
+      { image: "two.png", seconds: 1 },
+    ],
+    () => {},
+  );
+  await vi.advanceTimersByTimeAsync(40000);
+  expect((await result).size).toBeGreaterThan(0);
+  expect(state.events).toContain("record");
+});
+it("rejects an individual stalled media load", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  state.loadDelay = 40000;
+  const result = expect(
+    exportVideo([{ image: "stalled.png", seconds: 1 }], () => {}),
+  ).rejects.toThrow("Media loading timed out");
+  await vi.advanceTimersByTimeAsync(30000);
+  await result;
+  expect(state.events).not.toContain("record");
 });
