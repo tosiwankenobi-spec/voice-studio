@@ -209,7 +209,8 @@ export function extractFromHtml(html: string, pageUrl: string): Product {
     p.images = uniqImages(Array.isArray(imgs) ? imgs : imgs ? [imgs] : [], pageUrl);
     const offers = ld["offers"];
     const offer = (Array.isArray(offers) ? offers[0] : offers) as
-      Record<string, unknown> | undefined;
+      | Record<string, unknown>
+      | undefined;
     if (offer) {
       p.price = formatPrice(
         offer["price"] ??

@@ -11,8 +11,13 @@ export const Route = createFileRoute("/api/generate-image")({
         if (!context) {
           return new Response("Sign in to create images.", { status: 401 });
         }
-        const { prompt, stream = true } = (await request.json()) as { prompt?: string; stream?: boolean };
-        const text = String(prompt ?? "").trim().slice(0, 4000);
+        const { prompt, stream = true } = (await request.json()) as {
+          prompt?: string;
+          stream?: boolean;
+        };
+        const text = String(prompt ?? "")
+          .trim()
+          .slice(0, 4000);
         if (!text) return new Response("Describe the image first.", { status: 400 });
         const apiKey = process.env["LOVABLE_API_KEY"];
         if (!apiKey) return new Response("AI is not configured.", { status: 500 });

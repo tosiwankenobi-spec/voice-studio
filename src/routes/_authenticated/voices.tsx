@@ -17,9 +17,15 @@ export const Route = createFileRoute("/_authenticated/voices")({
   head: () => ({
     meta: [
       { title: "My Voices — Vocalis" },
-      { name: "description", content: "Name, preview and manage the voices you've copied from your recordings." },
+      {
+        name: "description",
+        content: "Name, preview and manage the voices you've copied from your recordings.",
+      },
       { property: "og:title", content: "My Voices — Vocalis" },
-      { property: "og:description", content: "Name, preview and manage the voices you've copied from your recordings." },
+      {
+        property: "og:description",
+        content: "Name, preview and manage the voices you've copied from your recordings.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -38,8 +44,14 @@ function Voices() {
   const input = useRef<HTMLInputElement>(null);
 
   async function add(file: File) {
-    if (!consent) { toast.error("Record the consent sentence first."); return; }
-    if (file.size > 25 * 1024 * 1024) { toast.error("Recordings must be under 25 MB."); return; }
+    if (!consent) {
+      toast.error("Record the consent sentence first.");
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error("Recordings must be under 25 MB.");
+      return;
+    }
     setBusy(true);
     try {
       await createVoice(file, name || "My voice", consent);
@@ -80,30 +92,68 @@ function Voices() {
     <div className="min-h-screen bg-background bg-glow font-sans">
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-6 pb-16">
-        <h1 className="font-display text-4xl font-bold">My <span className="text-primary">voices</span></h1>
-        <p className="mt-2 text-muted-foreground">Copy a voice from a recording, give it a name, and use it in the Recording Editor.</p>
+        <h1 className="font-display text-4xl font-bold">
+          My <span className="text-primary">voices</span>
+        </h1>
+        <p className="mt-2 text-muted-foreground">
+          Copy a voice from a recording, give it a name, and use it in the Recording Editor.
+        </p>
 
         <section className="mt-6 rounded-2xl border bg-card p-5">
           <h2 className="font-display text-lg font-bold">Add a voice</h2>
-          <p className="mt-1 text-xs text-muted-foreground">Best results: 30 seconds to 2 minutes of one person speaking clearly, no music.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Best results: 30 seconds to 2 minutes of one person speaking clearly, no music.
+          </p>
           <VoiceConsent key={consentKey} onChange={setConsent} disabled={busy} />
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name, e.g. My podcast voice" maxLength={80} />
-            <input ref={input} type="file" accept="audio/*,video/*" className="hidden" onChange={(e) => e.target.files?.[0] && add(e.target.files[0])} />
-            <Button variant="outline" disabled={busy || mic.recording || !consent} onClick={() => input.current?.click()}><Upload className="h-4 w-4" />Upload</Button>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Name, e.g. My podcast voice"
+              maxLength={80}
+            />
+            <input
+              ref={input}
+              type="file"
+              accept="audio/*,video/*"
+              className="hidden"
+              onChange={(e) => e.target.files?.[0] && add(e.target.files[0])}
+            />
+            <Button
+              variant="outline"
+              disabled={busy || mic.recording || !consent}
+              onClick={() => input.current?.click()}
+            >
+              <Upload className="h-4 w-4" />
+              Upload
+            </Button>
             {mic.recording ? (
-              <Button variant="destructive" onClick={mic.stop}><Square className="h-4 w-4" />Stop · {mic.clock}</Button>
+              <Button variant="destructive" onClick={mic.stop}>
+                <Square className="h-4 w-4" />
+                Stop · {mic.clock}
+              </Button>
             ) : (
-              <Button variant="outline" disabled={busy || !consent} onClick={mic.start}><Circle className="h-4 w-4 fill-destructive text-destructive" />Record</Button>
+              <Button variant="outline" disabled={busy || !consent} onClick={mic.start}>
+                <Circle className="h-4 w-4 fill-destructive text-destructive" />
+                Record
+              </Button>
             )}
           </div>
-          {busy && <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Copying the voice…</p>}
+          {busy && (
+            <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Copying the voice…
+            </p>
+          )}
         </section>
 
         {isLoading && <Loader2 className="mt-8 h-6 w-6 animate-spin text-primary" />}
         {error && <p className="mt-8 text-destructive">{(error as Error).message}</p>}
         {data && data.length === 0 && (
-          <div className="mt-10 flex flex-col items-center text-muted-foreground"><Mic className="h-10 w-10" /><p className="mt-2 text-sm">No voices yet — add one above.</p></div>
+          <div className="mt-10 flex flex-col items-center text-muted-foreground">
+            <Mic className="h-10 w-10" />
+            <p className="mt-2 text-sm">No voices yet — add one above.</p>
+          </div>
         )}
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {data?.map((v) => (
@@ -117,10 +167,22 @@ function Voices() {
                   onBlur={(e) => rename(v.id, e.target.value, v.name)}
                   onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
                 />
-                <Button size="icon" variant="ghost" aria-label={`Delete ${v.name}`} onClick={() => del(v.id, v.name)}><Trash2 className="h-4 w-4" /></Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  aria-label={`Delete ${v.name}`}
+                  onClick={() => del(v.id, v.name)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">Added {new Date(v.created_at).toLocaleDateString()}{v.consented_at ? " · spoken consent on file" : ""}</p>
-              <div className="mt-3"><VoicePreview voice={v} /></div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Added {new Date(v.created_at).toLocaleDateString()}
+                {v.consented_at ? " · spoken consent on file" : ""}
+              </p>
+              <div className="mt-3">
+                <VoicePreview voice={v} />
+              </div>
             </div>
           ))}
         </div>

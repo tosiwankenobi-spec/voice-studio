@@ -10,12 +10,17 @@ export function useMicRecorder(onDone: (file: File) => void) {
   async function start() {
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+      });
     } catch {
       toast.error("Microphone access was blocked. Allow it in your browser and try again.");
       return;
     }
-    const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+    const type =
+      ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((t) =>
+        MediaRecorder.isTypeSupported(t),
+      ) ?? "";
     const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
@@ -27,7 +32,11 @@ export function useMicRecorder(onDone: (file: File) => void) {
         toast.error("That recording was empty.");
         return;
       }
-      onDone(new File([blob], `Microphone recording.${mime.includes("mp4") ? "m4a" : "webm"}`, { type: mime }));
+      onDone(
+        new File([blob], `Microphone recording.${mime.includes("mp4") ? "m4a" : "webm"}`, {
+          type: mime,
+        }),
+      );
     };
     rec.start(500);
     setSecs(0);

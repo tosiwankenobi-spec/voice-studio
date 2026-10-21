@@ -18,7 +18,9 @@ async function failure(res: Response) {
   try {
     const j = JSON.parse(body);
     msg = j?.error?.message ?? j?.message ?? body;
-  } catch {}
+  } catch {
+    /* Keep the provider response when it is not JSON. */
+  }
   if (res.status === 402) return new Error("Out of AI credits. Please top up to continue.");
   if (res.status === 429) return new Error("Too many requests — wait a moment and try again.");
   return new Error(`AI request failed (${res.status}): ${String(msg).slice(0, 300)}`);
@@ -38,14 +40,23 @@ export const planScenes = createServerFn({ method: "POST" })
     await recordAIUsage(context, "scene_planning", 1);
     const res = await fetch(`${GATEWAY}/v1/messages`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${key()}`, "Content-Type": "application/json", "X-Lovable-AIG-SDK": "fetch" },
+      headers: {
+        Authorization: `Bearer ${key()}`,
+        "Content-Type": "application/json",
+        "X-Lovable-AIG-SDK": "fetch",
+      },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
         max_tokens: 32000,
         stream: true,
         system:
           'You turn a voiceover script into video scenes. Split the WHOLE script, word for word, into consecutive scenes of 1-3 sentences (roughly 5-15 seconds of speech each). Never skip, shorten or rewrite narration. For each scene write a vivid, specific image prompt (subject, setting, lighting, camera framing, style) that illustrates it, and a short camera/motion description for animating it. Keep a consistent visual style across scenes. Return ONLY a JSON array: [{"narration":"...","imagePrompt":"...","motion":"..."}]. No markdown.',
-        messages: [{ role: "user", content: `Visual style: ${data.look || "cinematic, photorealistic"}\n\nScript:\n"""\n${data.script}\n"""` }],
+        messages: [
+          {
+            role: "user",
+            content: `Visual style: ${data.look || "cinematic, photorealistic"}\n\nScript:\n"""\n${data.script}\n"""`,
+          },
+        ],
       }),
     });
     if (!res.ok || !res.body) throw await failure(res);
@@ -63,8 +74,10 @@ export const planScenes = createServerFn({ method: "POST" })
         if (!line.startsWith("data:")) continue;
         try {
           const ev = JSON.parse(line.slice(5).trim());
-          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") out += ev.delta.text;
-          if (ev.type === "message_delta" && ev.delta?.stop_reason === "refusal") throw new Error("Claude declined this request.");
+          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta")
+            out += ev.delta.text;
+          if (ev.type === "message_delta" && ev.delta?.stop_reason === "refusal")
+            throw new Error("Claude declined this request.");
           if (ev.type === "error") throw new Error(ev.error?.message ?? "Claude failed.");
         } catch (e) {
           if (e instanceof Error && !(e instanceof SyntaxError)) throw e;
@@ -88,20 +101,24 @@ export const planScenes = createServerFn({ method: "POST" })
 
 export const startVideo = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: { prompt: string; image?: string | undefined; seconds?: number | undefined }) => {
-    const prompt = String(d.prompt ?? "").trim().slice(0, 3000);
-    if (!prompt) throw new Error("Describe the motion first.");
-    const seconds = Math.min(10, Math.max(3, Math.round(Number(d.seconds) || 8)));
-    let image: { data: string; mime: string } | null = null;
-    if (d.image) {
-      const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(d.image);
-      if (!m) throw new Error("Unsupported image.");
-      if (!m || !m[1] || !m[2]) throw new Error("Unsupported image.");
-      if (m[2].length > 20_000_000) throw new Error("Image is too large.");
-      image = { mime: m[1], data: m[2] };
-    }
-    return { prompt, seconds, image };
-  })
+  .inputValidator(
+    (d: { prompt: string; image?: string | undefined; seconds?: number | undefined }) => {
+      const prompt = String(d.prompt ?? "")
+        .trim()
+        .slice(0, 3000);
+      if (!prompt) throw new Error("Describe the motion first.");
+      const seconds = Math.min(10, Math.max(3, Math.round(Number(d.seconds) || 8)));
+      let image: { data: string; mime: string } | null = null;
+      if (d.image) {
+        const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(d.image);
+        if (!m) throw new Error("Unsupported image.");
+        if (!m || !m[1] || !m[2]) throw new Error("Unsupported image.");
+        if (m[2].length > 20_000_000) throw new Error("Image is too large.");
+        image = { mime: m[1], data: m[2] };
+      }
+      return { prompt, seconds, image };
+    },
+  )
   .handler(async ({ data, context }) => {
     await recordAIUsage(context, "video", data.seconds);
     const text = `${data.prompt}. In a single continuous shot, no scene cuts. No dialogue. Soft ambient sound only.`;
@@ -117,7 +134,12 @@ export const startVideo = createServerFn({ method: "POST" })
       body: JSON.stringify({
         model: VIDEO_MODEL,
         input,
-        response_format: { type: "video", resolution: "720p", duration: `${data.seconds}s`, aspect_ratio: "16:9" },
+        response_format: {
+          type: "video",
+          resolution: "720p",
+          duration: `${data.seconds}s`,
+          aspect_ratio: "16:9",
+        },
       }),
     });
     if (!res.ok) throw await failure(res);
@@ -133,25 +155,47 @@ export const checkVideo = createServerFn({ method: "POST" })
     return { id, prompt: String(d.prompt ?? "").slice(0, 2000) };
   })
   .handler(async ({ data, context }) => {
-    const res = await fetch(`${GATEWAY}/v1/videos/${data.id}`, { headers: { Authorization: `Bearer ${key()}` } });
+    const res = await fetch(`${GATEWAY}/v1/videos/${data.id}`, {
+      headers: { Authorization: `Bearer ${key()}` },
+    });
     if (!res.ok) throw await failure(res);
-    const job = (await res.json()) as { status: string; progress?: number; error?: { message?: string } };
+    const job = (await res.json()) as {
+      status: string;
+      progress?: number;
+      error?: { message?: string };
+    };
     if (job.status === "failed") {
-      return { status: "failed" as const, error: job.error?.message ?? "Video generation failed.", url: null, progress: 0 };
+      return {
+        status: "failed" as const,
+        error: job.error?.message ?? "Video generation failed.",
+        url: null,
+        progress: 0,
+      };
     }
     if (job.status !== "completed") {
       return { status: "working" as const, progress: job.progress ?? 0, url: null, error: null };
     }
     const path = `${context.userId}/videos/${data.id}.mp4`;
     const sb = context.supabase;
-    const existing = await sb.storage.from("clips").list(`${context.userId}/videos`, { search: `${data.id}.mp4` });
+    const existing = await sb.storage
+      .from("clips")
+      .list(`${context.userId}/videos`, { search: `${data.id}.mp4` });
     if (!existing.data?.length) {
-      const dl = await fetch(`${GATEWAY}/v1/videos/${data.id}/content`, { headers: { Authorization: `Bearer ${key()}` } });
+      const dl = await fetch(`${GATEWAY}/v1/videos/${data.id}/content`, {
+        headers: { Authorization: `Bearer ${key()}` },
+      });
       if (!dl.ok) throw await failure(dl);
       const bytes = new Uint8Array(await dl.arrayBuffer());
-      const up = await sb.storage.from("clips").upload(path, bytes, { contentType: "video/mp4", upsert: true });
+      const up = await sb.storage
+        .from("clips")
+        .upload(path, bytes, { contentType: "video/mp4", upsert: true });
       if (up.error) throw new Error(up.error.message);
-      await sb.from("media").insert({ kind: "video", prompt: data.prompt, storage_path: path, user_id: context.userId });
+      await sb.from("media").insert({
+        kind: "video",
+        prompt: data.prompt,
+        storage_path: path,
+        user_id: context.userId,
+      });
     }
     const signed = await sb.storage.from("clips").createSignedUrl(path, 3600 * 6);
     if (signed.error) throw new Error(signed.error.message);
@@ -167,13 +211,21 @@ export const deleteMyVoice = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const sb = context.supabase;
-    const { data: row, error } = await sb.from("voices").select("*").eq("id", data.id).maybeSingle();
+    const { data: row, error } = await sb
+      .from("voices")
+      .select("*")
+      .eq("id", data.id)
+      .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row) throw new Error("Voice not found.");
     const k = process.env["ELEVENLABS_API_KEY"];
     if (k) {
-      const r = await fetch(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(row.eleven_voice_id)}`, { method: "DELETE", headers: { "xi-api-key": k } });
-      if (!r.ok && r.status !== 404 && r.status !== 400) console.error("ElevenLabs delete failed", r.status, await r.text());
+      const r = await fetch(
+        `https://api.elevenlabs.io/v1/voices/${encodeURIComponent(row.eleven_voice_id)}`,
+        { method: "DELETE", headers: { "xi-api-key": k } },
+      );
+      if (!r.ok && r.status !== 404 && r.status !== 400)
+        console.error("ElevenLabs delete failed", r.status, await r.text());
     }
     const files = [row.sample_path, row.consent_path].filter((p): p is string => !!p);
     if (files.length) await sb.storage.from("clips").remove(files);

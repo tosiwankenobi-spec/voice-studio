@@ -13,13 +13,13 @@ import { useAuth } from "@/hooks/useAuth";
 import { saveClip, saveScript } from "@/lib/library";
 import { supabase } from "@/integrations/supabase/client";
 import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
-import { LineTakes } from '@/components/LineTakes';
+import { LineTakes } from "@/components/LineTakes";
 import { CostHint } from "@/components/CostHint";
 import { FREE_PREVIEW_CHARS } from "@/lib/costs";
 import { sentences } from "@/lib/take-delivery";
 import { taggedDownloadUrl } from "@/lib/ai-tag";
 import { download } from "@/lib/media-client";
-import { PronunciationHints } from '@/components/PronunciationHints';
+import { PronunciationHints } from "@/components/PronunciationHints";
 
 export const Route = createFileRoute("/")({
   validateSearch: (s: Record<string, unknown>): { script?: string } =>
@@ -27,9 +27,15 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Vocalis — AI Voice Studio" },
-      { name: "description", content: "Write with Claude, then turn scripts into natural AI voiceovers in seconds." },
+      {
+        name: "description",
+        content: "Write with Claude, then turn scripts into natural AI voiceovers in seconds.",
+      },
       { property: "og:title", content: "Vocalis — AI Voice Studio" },
-      { property: "og:description", content: "Write with Claude, then turn scripts into natural AI voiceovers." },
+      {
+        property: "og:description",
+        content: "Write with Claude, then turn scripts into natural AI voiceovers.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -37,8 +43,20 @@ export const Route = createFileRoute("/")({
   component: Studio,
 });
 
-const QUICK = ["Polish for voiceover", "Make it shorter", "Make it more energetic", "Write a 30-second podcast intro"];
-const STYLES = ["", "Say warmly", "Say with excitement", "Say calmly and slowly", "Say like a news anchor", "Whisper"];
+const QUICK = [
+  "Polish for voiceover",
+  "Make it shorter",
+  "Make it more energetic",
+  "Write a 30-second podcast intro",
+];
+const STYLES = [
+  "",
+  "Say warmly",
+  "Say with excitement",
+  "Say calmly and slowly",
+  "Say like a news anchor",
+  "Whisper",
+];
 
 type Take = { id: string; url: string; voice: string; text: string };
 
@@ -64,25 +82,36 @@ function Studio() {
     saving.current = promise;
     try {
       const id = await promise;
-      scriptIdRef.current = id; setScriptId(id); setSaveState('saved');
+      scriptIdRef.current = id;
+      setScriptId(id);
+      setSaveState("saved");
       return id;
-    } finally { saving.current = null; }
+    } finally {
+      saving.current = null;
+    }
   }
 
   // Open a saved script from the library
   useEffect(() => {
     if (!scriptParam || !user) return;
     let cancelled = false;
-    supabase.from("scripts").select("id, content").eq("id", scriptParam).maybeSingle().then(({ data }) => {
-      if (data && !cancelled) {
-        loaded.current = true;
-        setScriptId(data.id);
-        scriptIdRef.current = data.id;
-        setText(data.content);
-        setSaveState("saved");
-      }
-    });
-    return () => { cancelled = true; };
+    supabase
+      .from("scripts")
+      .select("id, content")
+      .eq("id", scriptParam)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && !cancelled) {
+          loaded.current = true;
+          setScriptId(data.id);
+          scriptIdRef.current = data.id;
+          setText(data.content);
+          setSaveState("saved");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [scriptParam, user]);
 
   // Auto-save the script while signed in
@@ -106,7 +135,10 @@ function Studio() {
   }, [text, user]);
 
   async function runClaude(instruction: string) {
-    if (!user) { toast.error("Sign in to use AI tools."); return; }
+    if (!user) {
+      toast.error("Sign in to use AI tools.");
+      return;
+    }
     setBusy("claude");
     try {
       const r = await claude({ data: { text, instruction } });
@@ -123,12 +155,18 @@ function Studio() {
   const firstSentence = (sentences(text)[0] ?? "").slice(0, FREE_PREVIEW_CHARS);
 
   async function runPreview() {
-    if (!user) { toast.error("Sign in to preview voices."); return; }
+    if (!user) {
+      toast.error("Sign in to preview voices.");
+      return;
+    }
     setBusy("preview");
     try {
       const r = await speak({ data: { text: firstSentence, voice, style, preview: true } });
       const url = `data:${r.mime};base64,${r.audio}`;
-      setTakes((t) => [{ id: crypto.randomUUID(), url, voice: `${voice} · free preview`, text: firstSentence }, ...t]);
+      setTakes((t) => [
+        { id: crypto.randomUUID(), url, voice: `${voice} · free preview`, text: firstSentence },
+        ...t,
+      ]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Preview failed");
     } finally {
@@ -137,7 +175,10 @@ function Studio() {
   }
 
   async function runVoice() {
-    if (!user) { toast.error("Sign in to generate speech."); return; }
+    if (!user) {
+      toast.error("Sign in to generate speech.");
+      return;
+    }
     setBusy("voice");
     try {
       const r = await speak({ data: { text, voice, style } });
@@ -174,9 +215,17 @@ function Studio() {
           <div className="mt-2 flex justify-between text-xs text-muted-foreground">
             <span>
               {user ? (
-                saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved to your library" : "Auto-saves as you type"
+                saveState === "saving" ? (
+                  "Saving…"
+                ) : saveState === "saved" ? (
+                  "Saved to your library"
+                ) : (
+                  "Auto-saves as you type"
+                )
               ) : (
-                <Link to="/auth" className="text-primary hover:underline">Sign in to save your work</Link>
+                <Link to="/auth" className="text-primary hover:underline">
+                  Sign in to save your work
+                </Link>
               )}
             </span>
             <span>{text.length}/5000</span>
@@ -192,7 +241,13 @@ function Studio() {
             </div>
             <div className="mb-3 flex flex-wrap gap-2">
               {QUICK.map((q) => (
-                <Button key={q} size="sm" variant="outline" disabled={!!busy || !user} onClick={() => runClaude(q)}>
+                <Button
+                  key={q}
+                  size="sm"
+                  variant="outline"
+                  disabled={!!busy || !user}
+                  onClick={() => runClaude(q)}
+                >
                   {q}
                 </Button>
               ))}
@@ -204,13 +259,30 @@ function Studio() {
                 if (ask.trim()) runClaude(ask);
               }}
             >
-              <Input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Ask Claude anything about your script…" />
+              <Input
+                value={ask}
+                onChange={(e) => setAsk(e.target.value)}
+                placeholder="Ask Claude anything about your script…"
+              />
               <Button type="submit" variant="secondary" disabled={!!busy || !ask.trim() || !user}>
-                {busy === "claude" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                {busy === "claude" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4" />
+                )}
               </Button>
             </form>
           </div>
-          <LineTakes text={text} scriptId={scriptId} ensureScript={ensureScript} voice={voice} style={style} signedIn={!!user} disabled={!!busy} onVoiceChange={setVoice} />
+          <LineTakes
+            text={text}
+            scriptId={scriptId}
+            ensureScript={ensureScript}
+            voice={voice}
+            style={style}
+            signedIn={!!user}
+            disabled={!!busy}
+            onVoiceChange={setVoice}
+          />
         </section>
 
         <aside className="flex flex-col gap-6">
@@ -218,7 +290,12 @@ function Studio() {
             <h2 className="font-display text-lg font-bold">Voice</h2>
             <div className="mt-3 grid grid-cols-2 gap-2">
               {VOICES.map((v) => (
-                <Button key={v} variant={voice === v ? "default" : "outline"} size="sm" onClick={() => setVoice(v)}>
+                <Button
+                  key={v}
+                  variant={voice === v ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setVoice(v)}
+                >
                   {v}
                 </Button>
               ))}
@@ -230,14 +307,25 @@ function Studio() {
               className="mt-3 w-full rounded-md border bg-muted px-3 py-2 text-sm"
             >
               {STYLES.map((s) => (
-                <option key={s} value={s}>{s || "Natural"}</option>
+                <option key={s} value={s}>
+                  {s || "Natural"}
+                </option>
               ))}
             </select>
-            <Button className="mt-5 w-full shadow-glow" size="lg" disabled={!!busy || !text.trim() || !user} onClick={runVoice}>
+            <Button
+              className="mt-5 w-full shadow-glow"
+              size="lg"
+              disabled={!!busy || !text.trim() || !user}
+              onClick={runVoice}
+            >
               {busy === "voice" ? (
                 <span className="flex items-end gap-0.5">
                   {[0, 1, 2, 3].map((i) => (
-                    <span key={i} className="h-4 w-1 rounded bg-primary-foreground animate-wave" style={{ animationDelay: `${i * 0.12}s` }} />
+                    <span
+                      key={i}
+                      className="h-4 w-1 rounded bg-primary-foreground animate-wave"
+                      style={{ animationDelay: `${i * 0.12}s` }}
+                    />
                   ))}
                   <span className="ml-2">Generating…</span>
                 </span>
@@ -248,8 +336,15 @@ function Studio() {
               )}
             </Button>
             <div className="mt-2 flex items-center justify-between">
-              <Button variant="link" size="sm" className="h-auto px-0" disabled={!!busy || !firstSentence || !user} onClick={runPreview}>
-                {busy === "preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}Preview first sentence (free)
+              <Button
+                variant="link"
+                size="sm"
+                className="h-auto px-0"
+                disabled={!!busy || !firstSentence || !user}
+                onClick={runPreview}
+              >
+                {busy === "preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Preview first sentence (free)
               </Button>
               <CostHint kind="tts" units={text.length} />
             </div>
@@ -257,17 +352,32 @@ function Studio() {
 
           <div className="rounded-2xl border bg-card p-6">
             <h2 className="font-display text-lg font-bold">Takes</h2>
-            {takes.length === 0 && <p className="mt-2 text-sm text-muted-foreground">Generated audio appears here.</p>}
+            {takes.length === 0 && (
+              <p className="mt-2 text-sm text-muted-foreground">Generated audio appears here.</p>
+            )}
             <div className="mt-3 flex flex-col gap-4">
               {takes.map((t, i) => (
                 <div key={t.id} className="rounded-xl bg-muted p-3">
                   <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Take {takes.length - i} · {t.voice}</span>
+                    <span>
+                      Take {takes.length - i} · {t.voice}
+                    </span>
                     <div className="flex gap-1">
-                      <button aria-label="Download" onClick={async () => download(await taggedDownloadUrl(t.url), `vocalis-take-${takes.length - i}.wav`)}>
+                      <button
+                        aria-label="Download"
+                        onClick={async () =>
+                          download(
+                            await taggedDownloadUrl(t.url),
+                            `vocalis-take-${takes.length - i}.wav`,
+                          )
+                        }
+                      >
                         <Download className="h-4 w-4 hover:text-primary" />
                       </button>
-                      <button aria-label="Delete" onClick={() => setTakes((x) => x.filter((y) => y.id !== t.id))}>
+                      <button
+                        aria-label="Delete"
+                        onClick={() => setTakes((x) => x.filter((y) => y.id !== t.id))}
+                      >
                         <Trash2 className="h-4 w-4 hover:text-destructive" />
                       </button>
                     </div>

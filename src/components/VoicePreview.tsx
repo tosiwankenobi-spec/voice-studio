@@ -41,12 +41,30 @@ export function VoicePreview({ voice, compact = false }: { voice: SavedVoice; co
   return (
     <div className="flex flex-wrap gap-2">
       {voice.sampleUrl && (
-        <Button size={size} variant="outline" onClick={() => (state === "sample" ? stop() : playUrl(voice.sampleUrl, "sample"))} aria-label={`Play original recording of ${voice.name}`}>
-          {state === "sample" ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />} {compact ? "Original" : "Original recording"}
+        <Button
+          size={size}
+          variant="outline"
+          onClick={() => (state === "sample" ? stop() : playUrl(voice.sampleUrl, "sample"))}
+          aria-label={`Play original recording of ${voice.name}`}
+        >
+          {state === "sample" ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}{" "}
+          {compact ? "Original" : "Original recording"}
         </Button>
       )}
-      <Button size={size} variant="outline" disabled={state === "loading"} onClick={() => (state === "speaking" ? stop() : hear())} aria-label={`Hear ${voice.name} speak`}>
-        {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : state === "speaking" ? <Square className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+      <Button
+        size={size}
+        variant="outline"
+        disabled={state === "loading"}
+        onClick={() => (state === "speaking" ? stop() : hear())}
+        aria-label={`Hear ${voice.name} speak`}
+      >
+        {state === "loading" ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : state === "speaking" ? (
+          <Square className="h-4 w-4" />
+        ) : (
+          <Volume2 className="h-4 w-4" />
+        )}
         {compact ? "Hear it" : "Hear it speak"}
       </Button>
     </div>

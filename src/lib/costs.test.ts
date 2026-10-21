@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { costLabel, creditsFor, summarizeUsage } from "./costs";
+import { costLabel, creditsFor, summarizeUsage, requestCredits, speechUnits } from "./costs";
+
+it("rounds each batch request separately, just like the recorded usage", () => {
+  expect(requestCredits("tts", Array(20).fill(20))).toBe(20);
+  expect(requestCredits("tts", [1001, 1])).toBe(3);
+  expect(requestCredits("cloned_tts", [1001, 1])).toBe(5);
+  expect(requestCredits("tts", [])).toBe(0);
+  expect(requestCredits("tts_preview", [100, 100])).toBe(0);
+  expect(speechUnits("Hello", "Warm")).toBe("Warm: Hello".length);
+});
 
 describe("credit costs", () => {
   it("prices by unit with a 1-credit minimum and free kinds", () => {

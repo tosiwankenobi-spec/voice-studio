@@ -7,12 +7,21 @@ export async function saveScript(content: string, id?: string | null) {
     if (error) throw error;
     return id;
   }
-  const { data, error } = await supabase.from("scripts").insert({ content, title }).select("id").single();
+  const { data, error } = await supabase
+    .from("scripts")
+    .insert({ content, title })
+    .select("id")
+    .single();
   if (error) throw error;
   return data.id;
 }
 
-export async function saveClip(opts: { dataUrl: string; voice: string; text: string; scriptId?: string | null }) {
+export async function saveClip(opts: {
+  dataUrl: string;
+  voice: string;
+  text: string;
+  scriptId?: string | null;
+}) {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) throw new Error("Sign in to save clips.");
   const blob = await (await fetch(opts.dataUrl)).blob();

@@ -116,7 +116,14 @@ function roundRect(
 }
 
 /** Largest font size (up to `size`) at which `text` fits in `maxW`; sets ctx.font to it. */
-function fitFont(ctx: CanvasRenderingContext2D, text: string, weight: number, size: number, family: string, maxW: number) {
+function fitFont(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  weight: number,
+  size: number,
+  family: string,
+  maxW: number,
+) {
   let s = size;
   ctx.font = `${weight} ${s}px "${family}", sans-serif`;
   const w = ctx.measureText(text).width;
@@ -157,7 +164,14 @@ function drawCaption(
   } else {
     const bold = style === "bold";
     const text = bold ? cue.text.toUpperCase() : cue.text;
-    const size = fitFont(ctx, text + " ", 800, Math.round(base * (bold ? 0.1 : 0.065)), font, W * 0.9);
+    const size = fitFont(
+      ctx,
+      text + " ",
+      800,
+      Math.round(base * (bold ? 0.1 : 0.065)),
+      font,
+      W * 0.9,
+    );
     const y = bold ? H * 0.5 : H * (W > H ? 0.82 : 0.72);
     ctx.lineJoin = "round";
     ctx.lineWidth = size * 0.16;
@@ -285,59 +299,134 @@ export function videoCues(scenes: RenderScene[], opts: ExportOptions = {}): Cue[
   return out;
 }
 
-/** Records all scenes, in order, to a single video file in real time. No length limit. */
+/** Preload media before recording, then schedule every scene on the same audio clock. */
 export async function exportVideo(
   scenes: RenderScene[],
   onProgress: (i: number) => void,
   opts: ExportOptions = {},
 ): Promise<Blob> {
+  if (!scenes.length || scenes.some((s) => !Number.isFinite(s.seconds) || s.seconds <= 0))
+    throw new Error("Every scene needs a valid duration before export.");
+  opts.signal?.throwIfAborted();
   const fmt = VIDEO_FORMATS.find((f) => f.value === (opts.format ?? "16:9"))!;
   const W = opts.format ? fmt.w : 1280,
     H = opts.format ? fmt.h : 720;
   const brand = opts.brand ?? null;
   const font = brand?.font ?? "Plus Jakarta Sans";
   const highlight = brand?.primary ?? "#f5a524";
-  await document.fonts?.load(`800 40px "${font}"`).catch(() => undefined);
-  const logo = brand?.logoUrl ? await loadImg(brand.logoUrl).catch(() => null) : null;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d")!;
+  const style = opts.captions ?? "none";
   const ac = new AudioContext();
-  const dest = ac.createMediaStreamDestination();
-  const stream = new MediaStream([
-    ...canvas.captureStream(30).getVideoTracks(),
-    ...dest.stream.getAudioTracks(),
-  ]);
-  const mime = pickVideoMime();
-  const rec = new MediaRecorder(stream, {
-    mimeType: mime,
-    videoBitsPerSecond: W * H > 1_000_000 ? 8_000_000 : 5_000_000,
-  });
-  const chunks: Blob[] = [];
-  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-  const done = new Promise<void>((r) => (rec.onstop = () => r()));
-  rec.start(1000);
-
-  const runFor = (seconds: number, draw: (t: number, len: number) => void) =>
-    new Promise<void>((resolve, reject) => {
-      const start = performance.now();
-      const len = seconds * 1000;
-      const tick = () => {
-        if (opts.signal?.aborted)
-          return reject(new DOMException("Export cancelled.", "AbortError"));
-        const t = performance.now() - start;
-        draw(t, len);
-        if (t >= len) resolve();
-        else requestAnimationFrame(tick);
-      };
-      tick();
+  const videos: HTMLVideoElement[] = [];
+  const sources: AudioBufferSourceNode[] = [];
+  let stream: MediaStream | null = null;
+  let rec: MediaRecorder | null = null;
+  let recording: Promise<void> | null = null;
+  let recorderStarted = false;
+  let recorderError: unknown = null;
+  const prepareController = new AbortController();
+  const stopPreparing = () => prepareController.abort(opts.signal?.reason);
+  opts.signal?.addEventListener("abort", stopPreparing, { once: true });
+  const timeout = setTimeout(
+    () => prepareController.abort(new Error("Media loading timed out. Try exporting again.")),
+    30000,
+  );
+  const signal = prepareController.signal;
+  // Even a stalled decoder/load must be cancellable before the recorder exists.
+  const preparing = <T>(work: Promise<T>) =>
+    new Promise<T>((resolve, reject) => {
+      const abort = () => reject(signal.reason);
+      signal.addEventListener("abort", abort, { once: true });
+      if (signal.aborted) abort();
+      work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
     });
-
   try {
-    if (brand?.introText) {
-      await runFor(INTRO_SECONDS, (t, len) =>
+    await preparing(ac.resume());
+    if (opts.signal?.aborted) stopPreparing();
+    await preparing(
+      document.fonts?.load('800 40px "' + font + '"').catch(() => undefined) ?? Promise.resolve(),
+    );
+    const logo = brand?.logoUrl
+      ? await preparing(loadImg(brand.logoUrl)).catch((e) => {
+          if (signal.aborted) throw e;
+          return null;
+        })
+      : null;
+    const prepared: {
+      scene: RenderScene;
+      video: HTMLVideoElement | null;
+      image: HTMLImageElement | null;
+      audio: AudioBuffer | null;
+      cues: Cue[];
+    }[] = [];
+    // Sequential preload bounds decoder/network pressure on phones.
+    for (const scene of scenes) {
+      signal.throwIfAborted();
+      let video: HTMLVideoElement | null = null;
+      let image: HTMLImageElement | null = null;
+      let audio: AudioBuffer | null = null;
+      if (scene.video) {
+        video = document.createElement("video");
+        videos.push(video);
+        video.crossOrigin = "anonymous";
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.preload = "auto";
+        const loaded = new Promise<void>((resolve, reject) => {
+          video!.onloadeddata = () => resolve();
+          video!.onerror = () => reject(new Error("Couldn't load a scene video."));
+          video!.src = scene.video!;
+          video!.load();
+        });
+        await preparing(loaded);
+      } else if (scene.image) image = await preparing(loadImg(scene.image));
+      if (scene.audio) {
+        const response = await fetch(scene.audio, { signal });
+        if (!response.ok) throw new Error("Couldn't load a scene's audio.");
+        audio = await preparing(ac.decodeAudioData(await response.arrayBuffer()));
+      }
+      prepared.push({
+        scene,
+        video,
+        image,
+        audio,
+        cues: buildCues(estimateWordTimes(scene.text ?? "", scene.seconds), style),
+      });
+    }
+    clearTimeout(timeout);
+    opts.signal?.throwIfAborted();
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Video export isn't supported in this browser.");
+    const dest = ac.createMediaStreamDestination();
+    stream = new MediaStream([
+      ...canvas.captureStream(30).getVideoTracks(),
+      ...dest.stream.getAudioTracks(),
+    ]);
+    const mime = pickVideoMime();
+    rec = new MediaRecorder(stream, {
+      mimeType: mime,
+      videoBitsPerSecond: W * H > 1_000_000 ? 8_000_000 : 5_000_000,
+    });
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    recording = new Promise<void>((resolve) => {
+      rec!.onstop = () => resolve();
+    });
+    rec.onerror = () => {
+      recorderError = new Error("The browser couldn't finish recording the video.");
+    };
+    const intro = brand?.introText ? INTRO_SECONDS : 0;
+    const sceneEnd = intro + scenes.reduce((sum, s) => sum + s.seconds, 0);
+    const duration = exportLength(scenes, opts);
+    let current = -1;
+    let playbackError: unknown = null;
+    const draw = (time: number) => {
+      if (brand?.introText && time < intro) {
         drawCard(
           ctx,
           W,
@@ -347,65 +436,56 @@ export async function exportVideo(
           [brand.introText],
           font,
           logo,
-          Math.min(1, t / 300, (len - t) / 300),
-        ),
-      );
-    }
-    const style = opts.captions ?? "none";
-    for (let i = 0; i < scenes.length; i++) {
-      onProgress(i);
-      const s = scenes[i]!;
-      const cues = buildCues(estimateWordTimes(s.text ?? "", s.seconds), style);
-      let audioEl: HTMLAudioElement | null = null;
-      if (s.audio) {
-        audioEl = new Audio(s.audio);
-        audioEl.crossOrigin = "anonymous";
-        ac.createMediaElementSource(audioEl).connect(dest);
+          Math.max(0, Math.min(1, time / 0.3, (intro - time) / 0.3)),
+        );
+        return;
       }
-      let videoEl: HTMLVideoElement | null = null;
-      let img: HTMLImageElement | null = null;
-      if (s.video) {
-        videoEl = document.createElement("video");
-        videoEl.crossOrigin = "anonymous";
-        videoEl.src = s.video;
-        videoEl.muted = true;
-        videoEl.loop = true;
-        videoEl.playsInline = true;
-        await videoEl.play();
-      } else if (s.image) img = await loadImg(s.image);
-      await audioEl?.play();
-      await runFor(s.seconds, (t, len) => {
-        ctx.fillStyle = "#000";
-        ctx.fillRect(0, 0, W, H);
-        if (videoEl && videoEl.videoWidth)
-          drawFitted(ctx, videoEl, videoEl.videoWidth, videoEl.videoHeight, 1, W, H);
-        else if (img)
-          drawFitted(
-            ctx,
-            img,
-            img.naturalWidth,
-            img.naturalHeight,
-            1 + 0.12 * Math.min(1, t / len),
-            W,
-            H,
-          );
-        const cue = cueAt(cues, t / 1000);
-        if (cue) drawCaption(ctx, cue, t / 1000, style, W, H, font, highlight);
-        drawOverlays(ctx, W, H, opts, logo, font);
-        const fade = Math.min(1, t / 400, (len - t) / 400);
-        if (fade < 1) {
-          ctx.fillStyle = `rgba(0,0,0,${1 - Math.max(0, fade)})`;
+      let at = intro;
+      for (let i = 0; i < prepared.length; i++) {
+        const p = prepared[i]!;
+        if (time < at + p.scene.seconds) {
+          if (current !== i) {
+            if (current >= 0) prepared[current]?.video?.pause();
+            current = i;
+            onProgress(i);
+            if (p.video) {
+              p.video.currentTime = 0;
+              p.video.play().catch((error) => {
+                playbackError = error;
+              });
+            }
+          }
+          const local = time - at;
+          ctx.fillStyle = "#000";
           ctx.fillRect(0, 0, W, H);
+          if (p.video?.videoWidth)
+            drawFitted(ctx, p.video, p.video.videoWidth, p.video.videoHeight, 1, W, H);
+          else if (p.image)
+            drawFitted(
+              ctx,
+              p.image,
+              p.image.naturalWidth,
+              p.image.naturalHeight,
+              1 + 0.12 * Math.min(1, local / p.scene.seconds),
+              W,
+              H,
+            );
+          const cue = cueAt(p.cues, local);
+          if (cue) drawCaption(ctx, cue, local, style, W, H, font, highlight);
+          drawOverlays(ctx, W, H, opts, logo, font);
+          const fade = Math.max(0, Math.min(1, local / 0.4, (p.scene.seconds - local) / 0.4));
+          if (fade < 1) {
+            ctx.fillStyle = "rgba(0,0,0," + (1 - fade) + ")";
+            ctx.fillRect(0, 0, W, H);
+          }
+          return;
         }
-      }).finally(() => {
-        audioEl?.pause();
-        videoEl?.pause();
-      });
-    }
-    if (brand && (brand.outroText || brand.cta)) {
-      const lines = [brand.outroText, brand.cta].filter(Boolean);
-      if (opts.aiDisclosure) lines.push("Voice generated with AI");
-      await runFor(OUTRO_SECONDS, (t, len) =>
+        at += p.scene.seconds;
+      }
+      if (current >= 0) prepared[current]?.video?.pause();
+      if (brand && (brand.outroText || brand.cta)) {
+        const lines = [brand.outroText, brand.cta].filter(Boolean);
+        if (opts.aiDisclosure) lines.push("Voice generated with AI");
         drawCard(
           ctx,
           W,
@@ -415,17 +495,75 @@ export async function exportVideo(
           lines,
           font,
           logo,
-          Math.min(1, t / 300, (len - t) / 300),
-        ),
-      );
+          Math.max(0, Math.min(1, (time - sceneEnd) / 0.3, (duration - time) / 0.3)),
+        );
+      }
+    };
+    draw(0);
+    const startedAt = ac.currentTime;
+    rec.start(1000);
+    recorderStarted = true;
+    let offset = intro;
+    for (const p of prepared) {
+      if (p.audio) {
+        const source = ac.createBufferSource();
+        sources.push(source);
+        source.buffer = p.audio;
+        source.connect(dest);
+        source.start(startedAt + offset, 0, Math.min(p.scene.seconds, p.audio.duration));
+      }
+      offset += p.scene.seconds;
     }
-  } finally {
+    await new Promise<void>((resolve, reject) => {
+      let frame = 0;
+      const finish = (error?: unknown) => {
+        cancelAnimationFrame(frame);
+        opts.signal?.removeEventListener("abort", abort);
+        if (error) reject(error);
+        else resolve();
+      };
+      const abort = () => finish(new DOMException("Export cancelled.", "AbortError"));
+      const tick = () => {
+        try {
+          if (opts.signal?.aborted) return abort();
+          if (recorderError) return finish(recorderError);
+          if (playbackError) return finish(playbackError);
+          const time = ac.currentTime - startedAt;
+          draw(Math.min(time, duration));
+          if (time >= duration) finish();
+          else frame = requestAnimationFrame(tick);
+        } catch (error) {
+          finish(error);
+        }
+      };
+      opts.signal?.addEventListener("abort", abort, { once: true });
+      tick();
+    });
     rec.stop();
-    await done;
+    await recording;
+    if (recorderError) throw recorderError;
+    return new Blob(chunks, { type: mime.split(";")[0] ?? "video/webm" });
+  } finally {
+    clearTimeout(timeout);
+    opts.signal?.removeEventListener("abort", stopPreparing);
+    sources.forEach((source) => {
+      try {
+        source.stop();
+      } catch {
+        /* Already stopped. */
+      }
+      source.disconnect();
+    });
+    videos.forEach((video) => {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    });
+    if (rec && rec.state !== "inactive") rec.stop();
+    if (recording && recorderStarted) await recording;
+    stream?.getTracks().forEach((track) => track.stop());
     await ac.close();
   }
-  if (opts.signal?.aborted) throw new DOMException("Export cancelled.", "AbortError");
-  return new Blob(chunks, { type: mime.split(";")[0] ?? "video/webm" });
 }
 
 export function audioSeconds(src: string) {

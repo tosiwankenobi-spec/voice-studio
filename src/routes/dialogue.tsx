@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
@@ -52,6 +52,13 @@ function Dialogue() {
   const [clips, setClips] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [mix, setMix] = useState<string | null>(null);
+
+  useEffect(
+    () => () => {
+      if (mix) URL.revokeObjectURL(mix);
+    },
+    [mix],
+  );
 
   const lines = useMemo(() => parseDialogue(script), [script]);
   const speakers = useMemo(() => speakersOf(lines), [lines]);
@@ -116,10 +123,10 @@ function Dialogue() {
   const missing = lines.map((l, i) => (clips[keyOf(i)] ? null : l)).filter(Boolean) as typeof lines;
   const stockChars = missing
     .filter((l) => !castFor(l.speaker).startsWith("saved:"))
-    .reduce((a, l) => a + l.text.length, 0);
+    .map((l) => l.text.length);
   const minechars = missing
     .filter((l) => castFor(l.speaker).startsWith("saved:"))
-    .reduce((a, l) => a + l.text.length, 0);
+    .map((l) => l.text.length);
 
   return (
     <div className="min-h-screen bg-background bg-glow font-sans">
@@ -136,7 +143,11 @@ function Dialogue() {
           {!user && <AISignIn />}
           <Textarea
             value={script}
-            onChange={(e) => setScript(e.target.value)}
+            disabled={!!busy}
+            onChange={(e) => {
+              setScript(e.target.value);
+              setMix(null);
+            }}
             className="mt-4 min-h-[260px] bg-muted font-mono text-sm leading-relaxed"
             aria-label="Dialogue script"
           />
@@ -188,6 +199,7 @@ function Dialogue() {
                   <span className="truncate font-semibold">{sp}</span>
                   <select
                     value={castFor(sp)}
+                    disabled={!!busy}
                     onChange={(e) => {
                       setCast((c) => ({ ...c, [sp]: e.target.value }));
                       setMix(null);
@@ -225,7 +237,7 @@ function Dialogue() {
             </Button>
             <div className="mt-2 text-center">
               <CostHint kind="tts" units={stockChars} />
-              {minechars > 0 && (
+              {minechars.length > 0 && (
                 <>
                   {" "}
                   + <CostHint kind="cloned_tts" units={minechars} />
