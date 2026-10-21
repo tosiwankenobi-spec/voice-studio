@@ -8,6 +8,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { AISignIn } from "@/components/AISignIn";
 import { useAuth } from "@/hooks/useAuth";
 import { streamImage } from "@/lib/stream-image";
+import { VideoJobFailedError } from "@/lib/video-job";
 import { animate, download, saveImage } from "@/lib/media-client";
 
 export const Route = createFileRoute("/images")({
@@ -37,6 +38,7 @@ type Item = {
   final: boolean;
   video?: string | undefined;
   animating?: boolean | undefined;
+  jobId?: string | undefined;
   progress?: number | undefined;
 };
 
@@ -83,12 +85,17 @@ function ImageStudio() {
       const url = await animate({
         prompt: `${it.prompt}. Gentle cinematic camera movement`,
         image: it.src,
+        jobId: it.jobId,
+        onJobStarted: (jobId) => patch(it.id, { jobId }),
         onProgress: (p) => patch(it.id, { progress: p }),
       });
-      patch(it.id, { video: url, animating: false });
+      patch(it.id, { video: url, animating: false, jobId: undefined });
       toast.success("Video ready — saved to your library.");
     } catch (e) {
-      patch(it.id, { animating: false });
+      patch(it.id, {
+        animating: false,
+        ...(e instanceof VideoJobFailedError ? { jobId: undefined } : {}),
+      });
       toast.error((e as Error).message);
     }
   }
@@ -198,7 +205,7 @@ function ImageStudio() {
                         ) : (
                           <>
                             <Film className="h-4 w-4" />
-                            Bring to life
+                            {it.jobId ? "Resume animation" : "Bring to life"}
                           </>
                         )}
                       </Button>

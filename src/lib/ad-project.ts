@@ -31,6 +31,15 @@ export async function saveAdProject(input: {
 }) {
   const bucket = supabase.storage.from("clips");
   const uploaded: string[] = [];
+  let committed = false;
+  const paths = (value: Json) =>
+    (Array.isArray(value) ? value : []).flatMap((scene) => {
+      if (!scene || typeof scene !== "object" || Array.isArray(scene)) return [];
+      return [scene.audioPath, scene.aiImagePath].filter(
+        (path): path is string =>
+          typeof path === "string" && path.startsWith(`${input.userId}/ads/`) && !path.includes(".."),
+      );
+    });
   const store = async (url: string, kind: "audio" | "image") => {
     const response = await fetch(url);
     if (!response.ok) throw new Error("Could not read a generated ad asset.");
@@ -46,6 +55,12 @@ export async function saveAdProject(input: {
     return path;
   };
   try {
+    let previous: string[] = [];
+    if (input.id) {
+      const prior = await supabase.from("ad_projects").select("scenes").eq("id", input.id).single();
+      if (prior.error) throw prior.error;
+      previous = paths(prior.data.scenes);
+    }
     const scenes: StoredScene[] = [];
     for (const scene of input.scenes) {
       const audioPath =
@@ -83,9 +98,21 @@ export async function saveAdProject(input: {
       if (saved.error) throw saved.error;
       id = saved.data.id;
     }
+    committed = true;
+    const retained = new Set(paths(row.scenes));
+    const superseded = [...new Set(previous)].filter((path) => !retained.has(path));
+    if (superseded.length) {
+      // Cleanup failure must not roll back assets referenced by the committed row.
+      try {
+        const cleanup = await bucket.remove(superseded);
+        if (cleanup.error) console.warn("Could not remove superseded ad assets.", cleanup.error);
+      } catch (error) {
+        console.warn("Could not remove superseded ad assets.", error);
+      }
+    }
     return { id, scenes };
   } catch (error) {
-    if (uploaded.length) await bucket.remove(uploaded);
+    if (!committed && uploaded.length) await bucket.remove(uploaded);
     throw error;
   }
 }

@@ -7,11 +7,18 @@ const state = vi.hoisted(() => ({
   fail: false,
   uploadFailsAt: 0,
   signed: [] as string[],
+  previous: [] as unknown[],
+  cleanupFails: false,
 }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     storage: {
       from: () => ({
+      select: () => ({
+        eq: () => ({
+          single: async () => ({ data: { scenes: state.previous }, error: null }),
+        }),
+      }),
         upload: async (path: string) => {
           if (state.uploadFailsAt === state.uploads.length + 1)
             return { error: new Error("Upload failed") };
@@ -19,6 +26,7 @@ vi.mock("@/integrations/supabase/client", () => ({
           return { error: null };
         },
         remove: async (paths: string[]) => {
+          if (state.cleanupFails) throw new Error("Cleanup failed");
           state.removed.push(...paths);
           return { error: null };
         },
@@ -85,6 +93,8 @@ beforeEach(() => {
   state.fail = false;
   state.uploadFailsAt = 0;
   state.signed = [];
+  state.previous = [];
+  state.cleanupFails = false;
 });
 it("round trips narration, duration and generated assets without saving temporary URLs", async () => {
   const saved = await saveAdProject(input());
@@ -133,4 +143,36 @@ it("refuses stored paths belonging to a different user", async () => {
     restoreAdScenes([{ ...scene, audioPath: "other/ads/file.wav" }], "owner"),
   ).rejects.toThrow("Invalid saved ad asset");
   expect(state.signed).toEqual([]);
+});
+
+it("deletes only superseded owned assets after a successful update", async () => {
+  state.previous = [
+    { audioPath: "owner/ads/old.wav", aiImagePath: "owner/ads/keep.png" },
+    { audioPath: "other/ads/no.wav" },
+  ];
+  await saveAdProject({
+    ...input(),
+    id: "project-id",
+    scenes: [{ ...scene, aiImagePath: "owner/ads/keep.png" }],
+  });
+  expect(state.removed).toEqual(["owner/ads/old.wav"]);
+});
+it("keeps prior assets if the database update fails", async () => {
+  state.previous = [{ audioPath: "owner/ads/old.wav" }];
+  state.fail = true;
+  await expect(saveAdProject({ ...input(), id: "project-id" })).rejects.toThrow("Save failed");
+  expect(state.removed).toEqual(state.uploads);
+  expect(state.removed).not.toContain("owner/ads/old.wav");
+});
+it("preserves committed uploads if old-asset cleanup fails", async () => {
+  state.previous = [{ audioPath: "owner/ads/old.wav" }];
+  state.cleanupFails = true;
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const saved = await saveAdProject({ ...input(), id: "project-id" });
+    expect(saved.scenes[0]!.audioPath).toBe(state.uploads[0]);
+    expect(state.removed).toEqual([]);
+  } finally {
+    warn.mockRestore();
+  }
 });

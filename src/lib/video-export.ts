@@ -326,18 +326,34 @@ export async function exportVideo(
   const prepareController = new AbortController();
   const stopPreparing = () => prepareController.abort(opts.signal?.reason);
   opts.signal?.addEventListener("abort", stopPreparing, { once: true });
-  const timeout = setTimeout(
-    () => prepareController.abort(new Error("Media loading timed out. Try exporting again.")),
-    30000,
-  );
   const signal = prepareController.signal;
   // Even a stalled decoder/load must be cancellable before the recorder exists.
   const preparing = <T>(work: Promise<T>) =>
     new Promise<T>((resolve, reject) => {
-      const abort = () => reject(signal.reason);
+      const timeout = setTimeout(
+        () => prepareController.abort(new Error("Media loading timed out. Try exporting again.")),
+        30000,
+      );
+      const cleanup = () => {
+        clearTimeout(timeout);
+        signal.removeEventListener("abort", abort);
+      };
+      const abort = () => {
+        cleanup();
+        reject(signal.reason);
+      };
       signal.addEventListener("abort", abort, { once: true });
       if (signal.aborted) abort();
-      work.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+      work.then(
+        (value) => {
+          cleanup();
+          resolve(value);
+        },
+        (error) => {
+          cleanup();
+          reject(error);
+        },
+      );
     });
   try {
     await preparing(ac.resume());
@@ -381,9 +397,10 @@ export async function exportVideo(
         await preparing(loaded);
       } else if (scene.image) image = await preparing(loadImg(scene.image));
       if (scene.audio) {
-        const response = await fetch(scene.audio, { signal });
+        const response = await preparing(fetch(scene.audio, { signal }));
         if (!response.ok) throw new Error("Couldn't load a scene's audio.");
-        audio = await preparing(ac.decodeAudioData(await response.arrayBuffer()));
+        const data = await preparing(response.arrayBuffer());
+        audio = await preparing(ac.decodeAudioData(data));
       }
       prepared.push({
         scene,
@@ -393,7 +410,6 @@ export async function exportVideo(
         cues: buildCues(estimateWordTimes(scene.text ?? "", scene.seconds), style),
       });
     }
-    clearTimeout(timeout);
     opts.signal?.throwIfAborted();
     const canvas = document.createElement("canvas");
     canvas.width = W;
@@ -544,7 +560,6 @@ export async function exportVideo(
     if (recorderError) throw recorderError;
     return new Blob(chunks, { type: mime.split(";")[0] ?? "video/webm" });
   } finally {
-    clearTimeout(timeout);
     opts.signal?.removeEventListener("abort", stopPreparing);
     sources.forEach((source) => {
       try {
