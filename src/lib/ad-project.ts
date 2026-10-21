@@ -35,7 +35,7 @@ export async function saveAdProject(input: {
   const paths = (value: Json) =>
     (Array.isArray(value) ? value : []).flatMap((scene) => {
       if (!scene || typeof scene !== "object" || Array.isArray(scene)) return [];
-      return [scene.audioPath, scene.aiImagePath].filter(
+      return [scene["audioPath"], scene["aiImagePath"]].filter(
         (path): path is string =>
           typeof path === "string" &&
           path.startsWith(`${input.userId}/ads/`) &&
