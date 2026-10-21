@@ -24,7 +24,7 @@ jobs:
           node-version: 22
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.3
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Lint

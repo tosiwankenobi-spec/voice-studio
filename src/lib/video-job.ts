@@ -1,5 +1,9 @@
 export const VIDEO_JOB_TIMEOUT_MS = 15 * 60 * 1000;
 
+export class VideoJobFailedError extends Error {
+  override name = "VideoJobFailedError";
+}
+
 /** Poll an existing job without starting a second paid generation. */
 export async function waitForVideo<T>(options: {
   poll: (signal: AbortSignal) => Promise<{
@@ -56,7 +60,8 @@ export async function waitForVideo<T>(options: {
         },
       );
       checkAbort();
-      if (result.status === "failed") throw new Error(result.error || "Video generation failed.");
+      if (result.status === "failed")
+        throw new VideoJobFailedError(result.error || "Video generation failed.");
       if (result.status === "done" && result.result !== undefined) return result.result;
       options.onProgress?.(result.progress);
       await delay();

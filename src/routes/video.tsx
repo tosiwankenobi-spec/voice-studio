@@ -181,6 +181,7 @@ function VideoStudio() {
       patch(s.id, { video: url, jobId: undefined, busy: undefined });
     } catch (e) {
       patch(s.id, { busy: undefined });
+      if ((e as Error).name === "VideoJobFailedError") patch(s.id, { jobId: undefined });
       if ((e as Error).name === "AbortError")
         toast.message("Animation paused. Resume it to check the same job.");
       else toast.error((e as Error).message);
