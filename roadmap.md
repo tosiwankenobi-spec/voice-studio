@@ -1,8 +1,6 @@
 - [x] Require authenticated access on all AI spending endpoints and show sign-in prompts.
 - [ ] Add talking-avatar creation, narration preview and video download.
-- [x] Finish and verify browser-only pause/filler cleanup, noise reduction, loudness presets, A/B preview and undo on a real recording.
-
-Cleanup verification: a transcribed 15.82-second spoken WAV detected three filler candidates and two pauses. Filler removal exported 12.97 seconds with the transcript updated; pause shortening exported 13.36 seconds, exactly 2.46 seconds shorter; strong noise reduction cut quiet-room RMS from 0.00348 to 0.000388 (about 19 dB); YouTube loudness independently measured -14.0 LUFS with -0.9 dBFS true peak. A/B preview and undo restored the original transcript, with no browser errors. All 145 tests pass.
+- [ ] Add browser-only pause/filler cleanup, noise reduction, loudness presets, A/B preview and undo.
 - [ ] Add private pronunciation dictionary, server-side TTS replacement and script suggestions.
 - [ ] Verify new workflows and run regression tests.
 - [x] Require voice-copying consent and save clones durably, cleaning up failed saves.
