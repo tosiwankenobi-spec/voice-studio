@@ -7,6 +7,8 @@ import { Play, Pause, Download, Loader2, Upload, Save, X, AudioLines } from "luc
 import { SiteHeader } from "@/components/SiteHeader";
 import { AISignIn } from "@/components/AISignIn";
 import { PronunciationHints } from "@/components/PronunciationHints";
+import { FaceEditor } from "@/components/FaceEditor";
+import { PhotoFaceEditor } from "@/components/PhotoFaceEditor";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -27,14 +29,15 @@ import type { Word } from "@/lib/audio";
 import { audioExtension } from "@/lib/studio-validation";
 import { listVoices } from "@/lib/voices";
 import { useAuth } from "@/hooks/useAuth";
+import { drawAvatar, splitNarration, decodeNarration, exportAvatar } from "@/lib/avatar";
 import {
-  avatarPalette,
-  drawAvatar,
-  splitNarration,
-  decodeNarration,
-  exportAvatar,
-  type AvatarStyle,
-} from "@/lib/avatar";
+  DEFAULT_FACE,
+  DEFAULT_PHOTO_FACE,
+  parseFace,
+  parsePhotoFace,
+  type AvatarFace,
+  type PhotoFaceSettings,
+} from "@/lib/face";
 import { mouthShapeAt, visemeFrameAt, visemeTimeline, VISEME_SHAPES } from "@/lib/viseme";
 import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/avatar")({
@@ -44,12 +47,12 @@ export const Route = createFileRoute("/avatar")({
       {
         name: "description",
         content:
-          "Create animated talking-face videos with phoneme-matched lip-sync and your narration voice.",
+          "Design an animated face or stylized photo puppet with custom features, colors and phoneme-matched lip-sync.",
       },
       { property: "og:title", content: "Talking Face Studio — Vocalis" },
       {
         property: "og:description",
-        content: "Turn narration into a talking animated character with speech-timed mouth shapes.",
+        content: "Customize an animated face or uploaded portrait, then turn narration into speech-timed video.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -65,7 +68,11 @@ function Avatar() {
   const voices = useQuery({ queryKey: ["voices"], queryFn: listVoices, enabled: !!user });
   const [text, setText] = useState(""),
     [voice, setVoice] = useState("Kore"),
-    [style, setStyle] = useState<AvatarStyle>("robot"),
+    [mode, setMode] = useState<"animated" | "photo">("animated"),
+    [face, setFace] = useState<AvatarFace>({ ...DEFAULT_FACE }),
+    [photoSettings, setPhotoSettings] = useState<PhotoFaceSettings>({ ...DEFAULT_PHOTO_FACE }),
+    [photo, setPhoto] = useState<{ image: HTMLImageElement; name: string } | null>(null),
+    [editorsReady, setEditorsReady] = useState(false),
     [portrait, setPortrait] = useState(false);
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null),
     [rawWords, setRawWords] = useState<Word[]>([]),
@@ -85,11 +92,22 @@ function Avatar() {
   const frames = useMemo(() => visemeTimeline(words), [words]);
   const canvas = useRef<HTMLCanvasElement>(null),
     input = useRef<HTMLInputElement>(null),
+    photoInput = useRef<HTMLInputElement>(null),
     playback = useRef<{ ctx: AudioContext; source: AudioBufferSourceNode; start: number } | null>(
       null,
     ),
     abort = useRef<AbortController | null>(null);
   const resultRef = useRef("");
+  useEffect(() => {
+    setFace(parseFace(localStorage.getItem("vocalis.avatar-face.v1")));
+    setPhotoSettings(parsePhotoFace(localStorage.getItem("vocalis.photo-face.v1")));
+    setEditorsReady(true);
+  }, []);
+  useEffect(() => {
+    if (!editorsReady) return;
+    localStorage.setItem("vocalis.avatar-face.v1", JSON.stringify(face));
+    localStorage.setItem("vocalis.photo-face.v1", JSON.stringify(photoSettings));
+  }, [editorsReady, face, photoSettings]);
   function stop() {
     const p = playback.current;
     playback.current = null;
@@ -109,6 +127,7 @@ function Avatar() {
     const ctx = c.getContext("2d");
     if (!ctx) return;
     let frame = 0;
+    const renderPhoto = mode === "photo" && photo ? { image: photo.image, settings: photoSettings } : undefined;
     const tick = () => {
       const p = playback.current,
         t = p ? Math.max(0, p.ctx.currentTime - p.start) : 0;
@@ -116,10 +135,10 @@ function Avatar() {
         ctx,
         c.width,
         c.height,
-        style,
+        face,
         p && buffer ? mouthShapeAt(frames, t) : { ...VISEME_SHAPES.rest },
         t,
-        avatarPalette(c),
+        renderPhoto,
       );
       const active = p ? visemeFrameAt(frames, t) : null;
       const label = active?.viseme ?? "rest";
@@ -128,7 +147,7 @@ function Avatar() {
     };
     tick();
     return () => cancelAnimationFrame(frame);
-  }, [buffer, frames, style, portrait]);
+  }, [buffer, frames, face, mode, photo, photoSettings, portrait]);
   useEffect(
     () => () => {
       abort.current?.abort();
@@ -227,6 +246,30 @@ function Avatar() {
       setStatus("");
     }
   }
+  function uploadPortrait(file: File) {
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      toast.error("Choose a PNG, JPEG or WebP portrait.");
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      toast.error("Portraits must be under 12 MB.");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      setPhoto({ image, name: file.name });
+      setMode("photo");
+      clearResult();
+      toast.success("Portrait ready — place the mouth over the lips.");
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      toast.error("Could not open that portrait.");
+    };
+    image.src = url;
+  }
   async function play() {
     if (playing) {
       stop();
@@ -259,11 +302,11 @@ function Avatar() {
       const blob = await exportAvatar(
         buffer,
         frames,
-        style,
+        face,
         portrait,
-        avatarPalette(c),
         (percent) => setStatus(`Creating video… ${Math.round(percent)}%`),
         controller.signal,
+        mode === "photo" && photo ? { image: photo.image, settings: photoSettings } : undefined,
       );
       const url = URL.createObjectURL(blob);
       resultRef.current = url;
@@ -312,7 +355,7 @@ function Avatar() {
       <main className="mx-auto max-w-6xl px-6 pb-16">
         <h1 className="font-display text-4xl font-bold">Talking face studio</h1>
         <p className="mt-2 text-muted-foreground">
-          Phoneme-matched lip-sync · Your script, your voice.
+          Design an animated face or upload a portrait · Phoneme-matched lip-sync.
         </p>
         {!user && <AISignIn />}
         <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_360px]">
@@ -321,7 +364,7 @@ function Avatar() {
               ref={canvas}
               width={portrait ? 720 : 1280}
               height={portrait ? 1280 : 720}
-              aria-label="Talking avatar preview"
+              aria-label={mode === "photo" ? "Talking portrait preview" : "Talking avatar preview"}
               className={`mx-auto w-full bg-background ${portrait ? "aspect-[9/16] max-w-80" : "aspect-video"}`}
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted px-4 py-3 text-sm">
@@ -396,23 +439,73 @@ function Avatar() {
           </div>
           <aside className="min-w-0 space-y-6">
             <div>
-              <h2 className="mb-3 font-display text-lg font-bold">Character</h2>
-              <div className="flex gap-2">
-                {(["robot", "presenter"] as const).map((value) => (
-                  <Button
-                    key={value}
-                    variant={style === value ? "default" : "outline"}
-                    disabled={busy}
-                    onClick={() => {
-                      setStyle(value);
-                      clearResult();
-                    }}
-                  >
-                    {value === "robot" ? "Robot" : "Presenter"}
-                  </Button>
-                ))}
+              <h2 className="mb-3 font-display text-lg font-bold">Face type</h2>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant={mode === "animated" ? "default" : "outline"}
+                  disabled={busy}
+                  onClick={() => {
+                    setMode("animated");
+                    clearResult();
+                  }}
+                >
+                  Animated
+                </Button>
+                <Button
+                  variant={mode === "photo" ? "default" : "outline"}
+                  disabled={busy}
+                  onClick={() => {
+                    setMode("photo");
+                    clearResult();
+                  }}
+                >
+                  Photo portrait
+                </Button>
               </div>
             </div>
+            {mode === "animated" ? (
+              <FaceEditor
+                face={face}
+                disabled={busy}
+                onChange={(next) => {
+                  setFace(next);
+                  clearResult();
+                }}
+              />
+            ) : (
+              <PhotoFaceEditor
+                face={face}
+                settings={photoSettings}
+                hasPhoto={!!photo}
+                photoName={photo?.name ?? ""}
+                disabled={busy}
+                onFaceChange={(next) => {
+                  setFace(next);
+                  clearResult();
+                }}
+                onChange={(next) => {
+                  setPhotoSettings(next);
+                  clearResult();
+                }}
+                onUpload={() => photoInput.current?.click()}
+                onClear={() => {
+                  setPhoto(null);
+                  clearResult();
+                }}
+              />
+            )}
+            <input
+              ref={photoInput}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              aria-label="Upload face portrait"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) uploadPortrait(file);
+                event.target.value = "";
+              }}
+            />
             <div>
               <h2 className="mb-3 font-display text-lg font-bold">Video size</h2>
               <div className="flex gap-2">

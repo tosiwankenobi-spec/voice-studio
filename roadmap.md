@@ -1,3 +1,8 @@
+- [x] Add a hands-on animated face editor with independent shape/style controls, live lip-sync and matching video export.
+- [x] Add an uploaded-portrait puppet mode with crop/style controls, adjustable lip-sync mouth placement and matching video export.
+- [ ] Verify live ElevenLabs cloned speech — blocked until a consented cloned voice is saved; live ElevenLabs Scribe transcription is verified.
+
+Face-editor verification: independent geometry and color controls visibly changed the animated face and persisted across reload; portrait upload, crop, style and mouth placement worked. Real uploaded narration produced nine timed words and 52 mouth shapes, preview cycled through seven distinct shapes, and both customized 1280×720 MP4 exports downloaded with audio. Desktop/mobile had no overflow or browser errors; all 154 tests and TypeScript passed.
 - [x] Apply the uploaded violet/cyan redesign: left navigation, Home dashboard, Voice Studio, Recording Editor and Product Ad.
 
 Redesign verification: all four screens checked signed-out at desktop and mobile sizes with no overflow or browser errors; signed-in Home showed recent work and monthly usage, idea creation populated Voice Studio, speech saved to My Library, and WAV export downloaded successfully. All 148 regression tests passed; TypeScript and the preview build passed.

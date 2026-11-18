@@ -1,40 +1,32 @@
 import { pickVideoMime } from "./video-export";
 import { mouthShapeAt, VISEME_SHAPES, type MouthShape, type VisemeFrame } from "./viseme";
-export type AvatarStyle = "robot" | "presenter";
-export type AvatarPalette = {
-  background: string;
-  face: string;
-  accent: string;
-  ink: string;
-  light: string;
-  body: string;
-};
-export function avatarPalette(element: HTMLElement): AvatarPalette {
-  const css = getComputedStyle(element);
-  const token = (name: string) => css.getPropertyValue(name).trim();
-  return {
-    background: token("--background"),
-    face: token("--primary"),
-    accent: token("--accent"),
-    ink: token("--primary-foreground"),
-    light: token("--foreground"),
-    body: token("--chart-3"),
-  };
-}
+import {
+  faceMouthGeometry,
+  photoLayout,
+  photoMouthGeometry,
+  type AvatarFace,
+  type PhotoFaceSettings,
+} from "./face";
 
-function drawMouth(
+export type AvatarPhoto = {
+  image: HTMLImageElement;
+  settings: PhotoFaceSettings;
+};
+
+type MouthGeometry = ReturnType<typeof faceMouthGeometry>;
+
+function paintMouth(
   ctx: CanvasRenderingContext2D,
-  style: AvatarStyle,
+  face: AvatarFace,
   mouth: MouthShape,
-  p: AvatarPalette,
+  geometry: MouthGeometry,
 ) {
-  const width = (style === "robot" ? 31 : 36) * mouth.width;
-  const height = 1.5 + mouth.open * (style === "robot" ? 29 : 34);
+  const { width, height, lineWidth } = geometry;
   ctx.save();
-  ctx.translate(0, 64);
+  ctx.translate(geometry.x, geometry.y);
   if (mouth.closed > 0.55 && mouth.open < 0.08) {
-    ctx.strokeStyle = style === "robot" ? p.light : p.ink;
-    ctx.lineWidth = style === "robot" ? 5 : 3.5;
+    ctx.strokeStyle = face.eyeColor;
+    ctx.lineWidth = lineWidth;
     ctx.lineCap = "round";
     ctx.beginPath();
     ctx.moveTo(-width, 0);
@@ -43,12 +35,12 @@ function drawMouth(
     ctx.restore();
     return;
   }
-  // The outer lips change width and rounding; the inner mouth reveals teeth and tongue by viseme.
-  ctx.fillStyle = style === "robot" ? p.ink : p.accent;
+  // Custom proportions scale the same viseme geometry used by preview and export.
+  ctx.fillStyle = face.lipColor;
   ctx.beginPath();
   ctx.ellipse(0, 0, width + 3, height + 3, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = p.ink;
+  ctx.fillStyle = face.eyeColor;
   ctx.beginPath();
   ctx.ellipse(0, 0, width, height, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -58,39 +50,77 @@ function drawMouth(
   ctx.clip();
   if (mouth.teeth > 0.08 && height > 3) {
     ctx.globalAlpha = Math.min(1, mouth.teeth + 0.15);
-    ctx.fillStyle = p.light;
+    ctx.fillStyle = "#FFFFFF";
     ctx.beginPath();
     ctx.roundRect(-width * 0.76, -height, width * 1.52, Math.max(2, height * 0.72), 2);
     ctx.fill();
     ctx.globalAlpha = 1;
   }
   if (mouth.tongue > 0.12 && height > 5) {
-    ctx.fillStyle = p.accent;
+    ctx.fillStyle = face.lipColor;
     ctx.beginPath();
     ctx.ellipse(0, height * 0.7, width * 0.58, height * 0.5 * mouth.tongue, 0, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
-  if (style === "presenter") {
-    ctx.strokeStyle = p.accent;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, width + 1, height + 1, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+  ctx.strokeStyle = face.lipColor;
+  ctx.lineWidth = Math.max(1.5, lineWidth * 0.55);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, width + 1, height + 1, 0, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.restore();
+}
+
+function drawMouth(ctx: CanvasRenderingContext2D, face: AvatarFace, mouth: MouthShape) {
+  paintMouth(ctx, face, mouth, faceMouthGeometry(face, mouth));
+}
+
+function drawPhotoAvatar(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  face: AvatarFace,
+  mouth: MouthShape,
+  photo: AvatarPhoto,
+) {
+  ctx.fillStyle = face.backgroundColor;
+  ctx.fillRect(0, 0, W, H);
+  const layout = photoLayout(
+    W,
+    H,
+    photo.image.naturalWidth || photo.image.width,
+    photo.image.naturalHeight || photo.image.height,
+    photo.settings,
+    face,
+  );
+  ctx.save();
+  ctx.filter = `brightness(${photo.settings.brightness}%) saturate(${photo.settings.saturation}%)`;
+  ctx.drawImage(photo.image, layout.x, layout.y, layout.width, layout.height);
+  ctx.restore();
+  if (photo.settings.warmth !== 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.abs(photo.settings.warmth) / 250;
+    ctx.fillStyle = photo.settings.warmth > 0 ? "#F59E0B" : "#22D3EE";
+    ctx.fillRect(layout.x, layout.y, layout.width, layout.height);
+    ctx.restore();
+  }
+  paintMouth(ctx, face, mouth, photoMouthGeometry(layout, photo.settings, face, mouth));
 }
 
 export function drawAvatar(
   ctx: CanvasRenderingContext2D,
   W: number,
   H: number,
-  style: AvatarStyle,
+  face: AvatarFace,
   mouth: MouthShape,
   time: number,
-  p: AvatarPalette,
+  photo?: AvatarPhoto,
 ) {
-  ctx.fillStyle = p.background;
+  if (photo) {
+    drawPhotoAvatar(ctx, W, H, face, mouth, photo);
+    return;
+  }
+  ctx.fillStyle = face.backgroundColor;
   ctx.fillRect(0, 0, W, H);
   ctx.save();
   const size = Math.min(W / 600, H / 450);
@@ -101,7 +131,7 @@ export function drawAvatar(
   const ellipse = (x: number, y: number, rx: number, ry: number, color: string) => {
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y, Math.max(0.1, rx), Math.max(0.1, ry), 0, 0, Math.PI * 2);
     ctx.fill();
   };
   const round = (x: number, y: number, w: number, h: number, r: number, color: string) => {
@@ -110,50 +140,91 @@ export function drawAvatar(
     ctx.roundRect(x, y, w, h, r);
     ctx.fill();
   };
-  ellipse(0, 182, 150, 92, p.body);
-  round(-25, 95, 50, 70, 12, p.face);
-  if (style === "robot") {
-    round(-112, -99, 224, 204, 42, p.face);
-    round(-135, -30, 23, 70, 10, p.accent);
-    round(112, -30, 23, 70, 10, p.accent);
-    round(-6, -145, 12, 46, 5, p.body);
-    ellipse(0, -150, 14, 14, p.accent);
-    round(-89, -60, 178, 85, 22, p.ink);
-    const blink = time % 4.8 > 4.65 ? 3 : 16;
-    ellipse(-42, -20, 16, blink, p.light);
-    ellipse(42, -20, 16, blink, p.light);
-    for (let i = 0; i < 3; i++) round(-69 + i * 10, 48, 5, 13, 2, p.accent);
-  } else {
-    ellipse(0, -15, 105, 128, p.face);
-    ellipse(-108, 8, 14, 24, p.face);
-    ellipse(108, 8, 14, 24, p.face);
-    ctx.fillStyle = p.ink;
+
+  const sx = face.faceWidth / 100;
+  const sy = face.faceHeight / 100;
+  const w = 105 * sx;
+  const h = 128 * sy;
+  const centerY = -15;
+  const lineWidth = 3.5 * (face.lineWeight / 100);
+
+  ellipse(0, 182, 150, 92, face.bodyColor);
+  round(-25 * sx, 95 * sy, 50 * sx, 70 * sy, 12, face.faceColor);
+  ellipse(-w - 3, 8, 14 * (face.earSize / 100), 24 * (face.earSize / 100), face.faceColor);
+  ellipse(w + 3, 8, 14 * (face.earSize / 100), 24 * (face.earSize / 100), face.faceColor);
+
+  const upperRadius = 24 + (face.roundness / 100) * Math.min(w, h) * 0.85;
+  const lowerRadius = 18 + (face.jaw / 100) * Math.min(w, h) * 0.9;
+  ctx.fillStyle = face.faceColor;
+  ctx.beginPath();
+  ctx.roundRect(-w, centerY - h, w * 2, h * 2, [upperRadius, upperRadius, lowerRadius, lowerRadius]);
+  ctx.fill();
+
+  if (face.hairVolume > 0) {
+    const volume = face.hairVolume / 100;
+    const sweep = face.hairSweep * sx;
+    ctx.fillStyle = face.hairColor;
     ctx.beginPath();
-    ctx.moveTo(-100, -55);
-    ctx.bezierCurveTo(-122, -170, 95, -181, 103, -50);
-    ctx.bezierCurveTo(45, -125, 16, -48, -100, -55);
+    ctx.moveTo(-w * 0.98, centerY - h * 0.42);
+    ctx.bezierCurveTo(
+      -w * 1.12,
+      centerY - h * (1.05 + volume * 0.35),
+      w * 1.08,
+      centerY - h * (1.08 + volume * 0.32),
+      w * 0.98,
+      centerY - h * 0.4,
+    );
+    ctx.bezierCurveTo(
+      w * 0.52 + sweep,
+      centerY - h * (0.72 + volume * 0.12),
+      w * 0.08 + sweep,
+      centerY - h * 0.32,
+      -w * 0.98,
+      centerY - h * 0.42,
+    );
     ctx.fill();
-    const blink = time % 4.8 > 4.65 ? 2 : 11;
-    ellipse(-39, -26, 9, blink, p.ink);
-    ellipse(39, -26, 9, blink, p.ink);
-    round(-54, -52, 28, 5, 2, p.ink);
-    round(26, -52, 28, 5, 2, p.ink);
-    ctx.save();
-    ctx.globalAlpha = 0.45;
-    ellipse(-65, 35, 17, 9, p.accent);
-    ellipse(65, 35, 17, 9, p.accent);
-    ctx.restore();
-    ctx.strokeStyle = p.accent;
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(2, -8);
-    ctx.lineTo(-5, 20);
-    ctx.lineTo(10, 20);
-    ctx.stroke();
   }
-  drawMouth(ctx, style, mouth, p);
+
+  const blink = time % 4.8 > 4.65 ? 0.12 : 1;
+  const eyeX = 39 * sx * (face.eyeSpacing / 100);
+  const eyeY = -26 * sy;
+  const eyeSize = 9 * (face.eyeSize / 100);
+  const eyeHeight = eyeSize * (0.55 + (face.eyeOpen / 100) * 0.75) * blink;
+  ellipse(-eyeX, eyeY, eyeSize, eyeHeight, face.eyeColor);
+  ellipse(eyeX, eyeY, eyeSize, eyeHeight, face.eyeColor);
+
+  const browY = eyeY - 25 * (face.eyeSize / 100);
+  const browTilt = (face.browTilt / 40) * 6;
+  ctx.strokeStyle = face.hairColor;
+  ctx.lineWidth = lineWidth;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(-eyeX - 14, browY + browTilt);
+  ctx.lineTo(-eyeX + 14, browY - browTilt);
+  ctx.moveTo(eyeX - 14, browY - browTilt);
+  ctx.lineTo(eyeX + 14, browY + browTilt);
+  ctx.stroke();
+
+  if (face.blush > 0) {
+    ctx.save();
+    ctx.globalAlpha = (face.blush / 100) * 0.45;
+    ellipse(-65 * sx, 35 * sy, 17, 9, face.lipColor);
+    ellipse(65 * sx, 35 * sy, 17, 9, face.lipColor);
+    ctx.restore();
+  }
+
+  const nose = face.noseSize / 70;
+  ctx.strokeStyle = face.lipColor;
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  ctx.moveTo(2 * nose, -8 * sy);
+  ctx.lineTo(-5 * nose, 20 * sy);
+  ctx.lineTo(10 * nose, 20 * sy);
+  ctx.stroke();
+  drawMouth(ctx, face, mouth);
   ctx.restore();
 }
+
 export function splitNarration(text: string, limit = 4500) {
   const chunks: string[] = [];
   let rest = text.trim();
@@ -166,6 +237,7 @@ export function splitNarration(text: string, limit = 4500) {
   if (rest) chunks.push(rest);
   return chunks;
 }
+
 export async function decodeNarration(urls: string[]) {
   const ctx = new AudioContext();
   try {
@@ -192,14 +264,15 @@ export async function decodeNarration(urls: string[]) {
     await ctx.close();
   }
 }
+
 export async function exportAvatar(
   buffer: AudioBuffer,
   frames: VisemeFrame[],
-  style: AvatarStyle,
+  face: AvatarFace,
   portrait: boolean,
-  palette: AvatarPalette,
   progress: (percent: number) => void,
   signal: AbortSignal,
+  photo?: AvatarPhoto,
 ) {
   const canvas = document.createElement("canvas");
   canvas.width = portrait ? 720 : 1280;
@@ -228,7 +301,7 @@ export async function exportAvatar(
         recorder.onerror = () => reject(new Error("Video export failed."));
       }
     });
-    drawAvatar(ctx, canvas.width, canvas.height, style, { ...VISEME_SHAPES.rest }, 0, palette);
+    drawAvatar(ctx, canvas.width, canvas.height, face, { ...VISEME_SHAPES.rest }, 0, photo);
     recorder.start(500);
     const start = ac.currentTime + 0.05;
     src.start(start);
@@ -239,7 +312,7 @@ export async function exportAvatar(
           return;
         }
         const t = Math.max(0, ac.currentTime - start);
-        drawAvatar(ctx, canvas.width, canvas.height, style, mouthShapeAt(frames, t), t, palette);
+        drawAvatar(ctx, canvas.width, canvas.height, face, mouthShapeAt(frames, t), t, photo);
         progress(Math.min(100, (t / buffer.duration) * 100));
         if (t >= buffer.duration + 0.05) resolve();
         else requestAnimationFrame(tick);

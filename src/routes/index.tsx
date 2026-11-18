@@ -30,7 +30,7 @@ const STUDIOS = [
   { to: "/ad", title: "Product Ad", description: "Paste a product link and get a captioned vertical ad.", icon: Megaphone, color: "text-primary" },
   { to: "/dialogue", title: "Multi-voice", description: "Podcasts and dialogues with a different voice for every speaker.", icon: Users, color: "text-foreground" },
   { to: "/video", title: "Video Studio", description: "Turn a script into narrated scenes with pictures and motion.", icon: Clapperboard, color: "text-foreground" },
-  { to: "/avatar", title: "Talking Avatar", description: "An animated presenter with speech-timed mouth shapes.", icon: ScanFace, color: "text-foreground" },
+  { to: "/avatar", title: "Talking Avatar", description: "Design an animated or photo face with speech-timed mouth shapes.", icon: ScanFace, color: "text-foreground" },
 ] as const;
 const QUICK = [
   { label: "Podcast intro", idea: "A warm thirty-second podcast intro for a small business show" },
