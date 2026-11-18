@@ -16,7 +16,12 @@ export function alignTranscriptWords(text: string, timed: Word[], duration: numb
     const k = matches.get(i),
       source = k === undefined ? undefined : timed[k];
     return source
-      ? { w, s: Math.max(0, source.s * scale), e: Math.min(duration, source.e * scale) }
+      ? {
+          w,
+          s: Math.max(0, source.s * scale),
+          e: Math.min(duration, source.e * scale),
+          ...(source.sp ? { sp: source.sp } : {}),
+        }
       : undefined;
   });
   let index = 0;
@@ -29,11 +34,13 @@ export function alignTranscriptWords(text: string, timed: Word[], duration: numb
     while (index < tokens.length && !result[index]) index++;
     const start = result[startIndex - 1]?.e ?? 0;
     const end = result[index]?.s ?? duration;
+    const sp = result[startIndex - 1]?.sp ?? result[index]?.sp;
     for (let k = startIndex; k < index; k++)
       result[k] = {
         w: tokens[k] ?? "",
         s: start + ((end - start) * (k - startIndex)) / (index - startIndex),
         e: start + ((end - start) * (k - startIndex + 1)) / (index - startIndex),
+        ...(sp ? { sp } : {}),
       };
   }
   return result.filter((w): w is Word => !!w);

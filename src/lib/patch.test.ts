@@ -38,6 +38,21 @@ describe("contextual LCS patches", () => {
     expect(words.at(-1)?.e).toBe(2);
     expect(words[1]?.s).toBe(1.5);
   });
+  it("keeps diarized speakers and gives unmatched words the previous speaker", () => {
+    const words = alignTranscriptWords(
+      "Hello dear friend",
+      [
+        { w: "hello", s: 0, e: 0.5, sp: "speaker_0" },
+        { w: "friend", s: 1.5, e: 2, sp: "speaker_1" },
+      ],
+      2,
+    );
+    expect(words).toEqual([
+      { w: "Hello", s: 0, e: 0.5, sp: "speaker_0" },
+      { w: "dear", s: 0.5, e: 1.5, sp: "speaker_0" },
+      { w: "friend", s: 1.5, e: 2, sp: "speaker_1" },
+    ]);
+  });
   it("replaces a rewritten word with one context word on either side", () => {
     expect(changedSpan("We bake fresh bread today.", "We bake tasty bread today.")).toEqual({
       oldStart: 1,
