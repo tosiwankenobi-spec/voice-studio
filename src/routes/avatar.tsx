@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Play, Pause, Download, Loader2, Upload, Save, X, AudioLines } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -16,31 +16,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { generateSpeech, speakWithMyVoice, VOICES } from "@/lib/studio.functions";
+import {
+  generateSpeech,
+  speakWithMyVoice,
+  transcribeRecording,
+  VOICES,
+} from "@/lib/studio.functions";
+import { alignTranscriptWords } from "@/lib/patch";
+import type { Word } from "@/lib/audio";
+import { audioExtension } from "@/lib/studio-validation";
 import { listVoices } from "@/lib/voices";
 import { useAuth } from "@/hooks/useAuth";
 import {
   avatarPalette,
   drawAvatar,
-  mouthLevel,
   splitNarration,
   decodeNarration,
   exportAvatar,
   type AvatarStyle,
 } from "@/lib/avatar";
+import { mouthShapeAt, visemeFrameAt, visemeTimeline, VISEME_SHAPES } from "@/lib/viseme";
 import { supabase } from "@/integrations/supabase/client";
 export const Route = createFileRoute("/avatar")({
   head: () => ({
     meta: [
-      { title: "Talking Avatar — Vocalis" },
+      { title: "Talking Face Studio — Vocalis" },
       {
         name: "description",
-        content: "Create animated character videos with your script and chosen narration voice.",
+        content:
+          "Create animated talking-face videos with phoneme-matched lip-sync and your narration voice.",
       },
-      { property: "og:title", content: "Talking Avatar — Vocalis" },
+      { property: "og:title", content: "Talking Face Studio — Vocalis" },
       {
         property: "og:description",
-        content: "Turn narration into a talking animated character video.",
+        content: "Turn narration into a talking animated character with speech-timed mouth shapes.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -51,18 +60,29 @@ export const Route = createFileRoute("/avatar")({
 function Avatar() {
   const { user } = useAuth(),
     speak = useServerFn(generateSpeech),
-    mine = useServerFn(speakWithMyVoice);
+    mine = useServerFn(speakWithMyVoice),
+    transcribe = useServerFn(transcribeRecording);
   const voices = useQuery({ queryKey: ["voices"], queryFn: listVoices, enabled: !!user });
   const [text, setText] = useState(""),
     [voice, setVoice] = useState("Kore"),
     [style, setStyle] = useState<AvatarStyle>("robot"),
     [portrait, setPortrait] = useState(false);
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null),
+    [rawWords, setRawWords] = useState<Word[]>([]),
+    [currentViseme, setCurrentViseme] = useState("rest"),
     [playing, setPlaying] = useState(false),
     [busy, setBusy] = useState(false),
     [status, setStatus] = useState(""),
     [result, setResult] = useState(""),
     [mime, setMime] = useState("");
+  const words = useMemo(
+    () =>
+      buffer && text.trim() && rawWords.length
+        ? alignTranscriptWords(text, rawWords, buffer.duration)
+        : rawWords,
+    [buffer, rawWords, text],
+  );
+  const frames = useMemo(() => visemeTimeline(words), [words]);
   const canvas = useRef<HTMLCanvasElement>(null),
     input = useRef<HTMLInputElement>(null),
     playback = useRef<{ ctx: AudioContext; source: AudioBufferSourceNode; start: number } | null>(
@@ -97,15 +117,18 @@ function Avatar() {
         c.width,
         c.height,
         style,
-        p && buffer ? mouthLevel(buffer.getChannelData(0), buffer.sampleRate, t) : 0,
+        p && buffer ? mouthShapeAt(frames, t) : { ...VISEME_SHAPES.rest },
         t,
         avatarPalette(c),
       );
+      const active = p ? visemeFrameAt(frames, t) : null;
+      const label = active?.viseme ?? "rest";
+      setCurrentViseme((previous) => (previous === label ? previous : label));
       frame = requestAnimationFrame(tick);
     };
     tick();
     return () => cancelAnimationFrame(frame);
-  }, [buffer, style, portrait]);
+  }, [buffer, frames, style, portrait]);
   useEffect(
     () => () => {
       abort.current?.abort();
@@ -120,15 +143,33 @@ function Avatar() {
     resultRef.current = "";
     setResult("");
   }
+  async function alignAudio(url: string, mime: string, offset = 0, duration?: number) {
+    const seconds = duration ?? (await decodeNarration([url])).duration;
+    const blob = await (await fetch(url)).blob();
+    const fd = new FormData();
+    fd.append("file", new File([blob], `avatar-narration.${audioExtension(mime)}`, { type: mime }));
+    fd.append("seconds", String(seconds));
+    const aligned = await transcribe({ data: fd });
+    if (!aligned.words.length)
+      throw new Error("Word timings unavailable, so the mouth shapes can't match this audio yet.");
+    return {
+      text: aligned.text,
+      duration: seconds,
+      words: aligned.words.map((word) => ({ ...word, s: word.s + offset, e: word.e + offset })),
+    };
+  }
   async function narrate() {
     if (!user) return;
     stop();
     clearResult();
     setBusy(true);
+    setRawWords([]);
     try {
       const parts = splitNarration(text),
         urls: string[] = [],
+        timed: Word[] = [],
         saved = voices.data?.find((v) => voice === `saved:${v.id}`);
+      let offset = 0;
       for (let i = 0; i < parts.length; i++) {
         setStatus(`Generating narration ${i + 1} of ${parts.length}…`);
         const part = parts[i];
@@ -136,11 +177,18 @@ function Avatar() {
         const r = saved
           ? await mine({ data: { text: part, voiceId: saved.eleven_voice_id } })
           : await speak({ data: { text: part, voice } });
-        urls.push(`data:${r.mime};base64,${r.audio}`);
+        const url = `data:${r.mime};base64,${r.audio}`;
+        urls.push(url);
+        setStatus(`Matching mouth shapes ${i + 1} of ${parts.length}…`);
+        const aligned = await alignAudio(url, r.mime, offset);
+        timed.push(...aligned.words);
+        offset += aligned.duration;
       }
-      setStatus("Preparing your avatar…");
-      setBuffer(await decodeNarration(urls));
-      toast.success("Narration ready");
+      setStatus("Preparing phoneme lip-sync…");
+      const combined = await decodeNarration(urls);
+      setRawWords(timed);
+      setBuffer(combined);
+      toast.success("Narration and lip-sync ready");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Narration failed.");
     } finally {
@@ -149,15 +197,32 @@ function Avatar() {
     }
   }
   async function upload(file: File) {
+    if (!user) {
+      toast.error("Sign in to match mouth shapes to your narration.");
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error("Narration must be under 25 MB.");
+      return;
+    }
     stop();
     clearResult();
     setBusy(true);
+    setRawWords([]);
     setStatus("Opening narration…");
+    const url = URL.createObjectURL(file);
     try {
-      setBuffer(await decodeNarration([URL.createObjectURL(file)]));
+      const decoded = await decodeNarration([url]);
+      setStatus("Matching mouth shapes to your recording…");
+      const aligned = await alignAudio(url, file.type, 0, decoded.duration);
+      setRawWords(aligned.words);
+      setBuffer(decoded);
+      if (!text.trim()) setText(aligned.text);
+      toast.success("Narration and lip-sync ready");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not open audio.");
     } finally {
+      URL.revokeObjectURL(url);
       setBusy(false);
       setStatus("");
     }
@@ -193,6 +258,7 @@ function Avatar() {
     try {
       const blob = await exportAvatar(
         buffer,
+        frames,
         style,
         portrait,
         avatarPalette(c),
@@ -225,7 +291,7 @@ function Avatar() {
       if (up.error) throw up.error;
       const { error } = await supabase.from("media").insert({
         kind: "video",
-        prompt: `Talking avatar: ${text || "Uploaded narration"}`.slice(0, 2000),
+        prompt: `Talking face: ${text || "Uploaded narration"}`.slice(0, 2000),
         storage_path: path,
       });
       if (error) {
@@ -244,8 +310,10 @@ function Avatar() {
     <div className="min-h-screen bg-background bg-glow">
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-6 pb-16">
-        <h1 className="font-display text-4xl font-bold">Talking avatar</h1>
-        <p className="mt-2 text-muted-foreground">Animated characters · Your script, your voice.</p>
+        <h1 className="font-display text-4xl font-bold">Talking face studio</h1>
+        <p className="mt-2 text-muted-foreground">
+          Phoneme-matched lip-sync · Your script, your voice.
+        </p>
         {!user && <AISignIn />}
         <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_360px]">
           <div className="min-w-0">
@@ -256,15 +324,30 @@ function Avatar() {
               aria-label="Talking avatar preview"
               className={`mx-auto w-full bg-background ${portrait ? "aspect-[9/16] max-w-80" : "aspect-video"}`}
             />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-muted px-4 py-3 text-sm">
+              <span className="font-semibold text-primary">Phoneme lip-sync</span>
+              <span className="text-muted-foreground">
+                {frames.length
+                  ? `${words.length} timed words · ${frames.length} mouth shapes`
+                  : "Generate or upload narration to align the mouth"}
+              </span>
+              <span aria-live="polite" className="min-w-24 text-right font-mono text-xs uppercase">
+                {currentViseme === "rest" ? "Lips closed" : currentViseme.replace("-", " ")}
+              </span>
+            </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button variant="outline" disabled={!buffer || busy} onClick={play}>
+              <Button variant="outline" disabled={!buffer || !frames.length || busy} onClick={play}>
                 {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                 {playing ? "Pause" : "Preview"}
               </Button>
               <span className="text-sm text-muted-foreground">
                 {buffer ? `${buffer.duration.toFixed(1)} s narration` : "No narration yet"}
               </span>
-              <Button className="ml-auto" disabled={!buffer || busy} onClick={render}>
+              <Button
+                className="ml-auto"
+                disabled={!buffer || !frames.length || busy}
+                onClick={render}
+              >
                 <Download className="h-4 w-4" />
                 Create video
               </Button>
@@ -366,7 +449,10 @@ function Avatar() {
                 aria-label="Avatar script"
                 className="mt-3 min-h-52"
                 value={text}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  clearResult();
+                }}
                 placeholder="Paste your video script…"
                 disabled={busy}
               />
@@ -398,7 +484,7 @@ function Avatar() {
               ) : (
                 <AudioLines className="h-4 w-4" />
               )}
-              Generate narration
+              Generate & lip-sync
             </Button>
             <input
               ref={input}
@@ -414,11 +500,11 @@ function Avatar() {
             <Button
               variant="outline"
               className="w-full"
-              disabled={busy}
+              disabled={busy || !user}
               onClick={() => input.current?.click()}
             >
               <Upload className="h-4 w-4" />
-              Upload narration
+              Upload & lip-sync narration
             </Button>
           </aside>
         </div>

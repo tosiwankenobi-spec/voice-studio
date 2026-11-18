@@ -43,7 +43,7 @@ export function SiteHeader() {
             Product Ad
           </Link>
           <Link to="/avatar" className={link} activeProps={active}>
-            Talking Avatar
+            Talking Face
           </Link>
           <Link to="/images" className={link} activeProps={active}>
             Image Studio

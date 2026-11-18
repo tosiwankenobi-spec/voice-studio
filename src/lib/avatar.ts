@@ -1,4 +1,5 @@
 import { pickVideoMime } from "./video-export";
+import { mouthShapeAt, VISEME_SHAPES, type MouthShape, type VisemeFrame } from "./viseme";
 export type AvatarStyle = "robot" | "presenter";
 export type AvatarPalette = {
   background: string;
@@ -20,19 +21,72 @@ export function avatarPalette(element: HTMLElement): AvatarPalette {
     body: token("--chart-3"),
   };
 }
-export function mouthLevel(samples: Float32Array, sr: number, time: number) {
-  const start = Math.max(0, Math.floor(time * sr)),
-    end = Math.min(samples.length, start + Math.round(sr * 0.03));
-  let energy = 0;
-  for (let i = start; i < end; i++) energy += (samples[i] ?? 0) ** 2;
-  return Math.min(1, Math.max(0, (Math.sqrt(energy / Math.max(1, end - start)) - 0.006) * 9));
+
+function drawMouth(
+  ctx: CanvasRenderingContext2D,
+  style: AvatarStyle,
+  mouth: MouthShape,
+  p: AvatarPalette,
+) {
+  const width = (style === "robot" ? 31 : 36) * mouth.width;
+  const height = 1.5 + mouth.open * (style === "robot" ? 29 : 34);
+  ctx.save();
+  ctx.translate(0, 64);
+  if (mouth.closed > 0.55 && mouth.open < 0.08) {
+    ctx.strokeStyle = style === "robot" ? p.light : p.ink;
+    ctx.lineWidth = style === "robot" ? 5 : 3.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-width, 0);
+    ctx.quadraticCurveTo(0, 3 + mouth.round * 2, width, 0);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  // The outer lips change width and rounding; the inner mouth reveals teeth and tongue by viseme.
+  ctx.fillStyle = style === "robot" ? p.ink : p.accent;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, width + 3, height + 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = p.ink;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, width, height, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(0, 0, width, height, 0, 0, Math.PI * 2);
+  ctx.clip();
+  if (mouth.teeth > 0.08 && height > 3) {
+    ctx.globalAlpha = Math.min(1, mouth.teeth + 0.15);
+    ctx.fillStyle = p.light;
+    ctx.beginPath();
+    ctx.roundRect(-width * 0.76, -height, width * 1.52, Math.max(2, height * 0.72), 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (mouth.tongue > 0.12 && height > 5) {
+    ctx.fillStyle = p.accent;
+    ctx.beginPath();
+    ctx.ellipse(0, height * 0.7, width * 0.58, height * 0.5 * mouth.tongue, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  if (style === "presenter") {
+    ctx.strokeStyle = p.accent;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, width + 1, height + 1, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
+
 export function drawAvatar(
   ctx: CanvasRenderingContext2D,
   W: number,
   H: number,
   style: AvatarStyle,
-  mouth: number,
+  mouth: MouthShape,
   time: number,
   p: AvatarPalette,
 ) {
@@ -56,7 +110,6 @@ export function drawAvatar(
     ctx.roundRect(x, y, w, h, r);
     ctx.fill();
   };
-  // Shoulders, collar and head remain fully visible in both landscape and portrait.
   ellipse(0, 182, 150, 92, p.body);
   round(-25, 95, 50, 70, 12, p.face);
   if (style === "robot") {
@@ -85,8 +138,11 @@ export function drawAvatar(
     ellipse(39, -26, 9, blink, p.ink);
     round(-54, -52, 28, 5, 2, p.ink);
     round(26, -52, 28, 5, 2, p.ink);
+    ctx.save();
+    ctx.globalAlpha = 0.45;
     ellipse(-65, 35, 17, 9, p.accent);
     ellipse(65, 35, 17, 9, p.accent);
+    ctx.restore();
     ctx.strokeStyle = p.accent;
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -95,8 +151,7 @@ export function drawAvatar(
     ctx.lineTo(10, 20);
     ctx.stroke();
   }
-  ellipse(0, 61, 29 - mouth * 10, 3 + mouth * 24, p.ink);
-  if (mouth > 0.25) ellipse(0, 67 + mouth * 7, 12, mouth * 6, p.accent);
+  drawMouth(ctx, style, mouth, p);
   ctx.restore();
 }
 export function splitNarration(text: string, limit = 4500) {
@@ -139,6 +194,7 @@ export async function decodeNarration(urls: string[]) {
 }
 export async function exportAvatar(
   buffer: AudioBuffer,
+  frames: VisemeFrame[],
   style: AvatarStyle,
   portrait: boolean,
   palette: AvatarPalette,
@@ -172,7 +228,7 @@ export async function exportAvatar(
         recorder.onerror = () => reject(new Error("Video export failed."));
       }
     });
-    drawAvatar(ctx, canvas.width, canvas.height, style, 0, 0, palette);
+    drawAvatar(ctx, canvas.width, canvas.height, style, { ...VISEME_SHAPES.rest }, 0, palette);
     recorder.start(500);
     const start = ac.currentTime + 0.05;
     src.start(start);
@@ -183,15 +239,7 @@ export async function exportAvatar(
           return;
         }
         const t = Math.max(0, ac.currentTime - start);
-        drawAvatar(
-          ctx,
-          canvas.width,
-          canvas.height,
-          style,
-          mouthLevel(buffer.getChannelData(0), buffer.sampleRate, t),
-          t,
-          palette,
-        );
+        drawAvatar(ctx, canvas.width, canvas.height, style, mouthShapeAt(frames, t), t, palette);
         progress(Math.min(100, (t / buffer.duration) * 100));
         if (t >= buffer.duration + 0.05) resolve();
         else requestAnimationFrame(tick);

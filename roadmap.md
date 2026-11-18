@@ -1,5 +1,7 @@
 - [x] Require authenticated access on all AI spending endpoints and show sign-in prompts.
-- [ ] Add talking-avatar creation, narration preview and video download.
+- [x] Replace energy-only talking-avatar motion with phoneme/viseme lip-sync, preview and video export.
+
+Talking-face verification: generated narration produced 21 timed mouth shapes for six words; preview visibly cycled through wide, open, closed, tongue-up, round, sibilant and tongue shapes, and the downloaded MP4 contained the animation and audio. Uploaded narration produced 117 mouth shapes from 31 timed words. Preview/export share the same binary-searched viseme timeline, with closed lips during silence and 35ms coarticulation blends. All 148 tests pass; TypeScript and the preview build are clean.
 - [ ] Add browser-only pause/filler cleanup, noise reduction, loudness presets, A/B preview and undo.
 - [ ] Add private pronunciation dictionary, server-side TTS replacement and script suggestions.
 - [ ] Verify new workflows and run regression tests.
