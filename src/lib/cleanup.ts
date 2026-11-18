@@ -142,10 +142,7 @@ export function integratedLoudness(channels: Float32Array[], sr: number): number
   const kept = blocks.filter((e) => e >= mean / 10);
   return -0.691 + 10 * Math.log10(kept.reduce((a, b) => a + b, 0) / kept.length);
 }
-export function normalizeLoudness(channels: Float32Array[], sr: number, target: number) {
-  const measured = integratedLoudness(channels, sr);
-  if (!Number.isFinite(measured)) return channels.map((c) => c.slice());
-  const gain = Math.min(10 ** (24 / 20), 10 ** ((target - measured) / 20));
+function gainAndLimit(channels: Float32Array[], sr: number, gain: number) {
   const ceiling = 10 ** (-1 / 20);
   // Linked 5ms lookahead limiter with immediate attack and 80ms release.
   const n = channels[0]?.length ?? 0,
@@ -172,6 +169,19 @@ export function normalizeLoudness(channels: Float32Array[], sr: number, target: 
       const dst = out[k];
       if (dst) dst[i] = Math.max(-ceiling, Math.min(ceiling, (ch[i] ?? 0) * gain * limiter));
     });
+  }
+  return out;
+}
+export function normalizeLoudness(channels: Float32Array[], sr: number, target: number) {
+  let out = channels.map((c) => c.slice());
+  // Limiting can lower integrated loudness after the initial gain. Recheck and compensate rather
+  // than reporting the requested target while the exported recording measures quieter.
+  for (let pass = 0; pass < 4; pass++) {
+    const measured = integratedLoudness(out, sr);
+    if (!Number.isFinite(measured)) return out;
+    const difference = target - measured;
+    if (Math.abs(difference) < 0.05) break;
+    out = gainAndLimit(out, sr, Math.min(10 ** (24 / 20), 10 ** (difference / 20)));
   }
   return out;
 }

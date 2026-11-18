@@ -100,6 +100,16 @@ describe("loudness and gate", () => {
       expect(out[0]?.every((v) => Math.abs(v) <= 10 ** (-1 / 20) + 1e-6)).toBe(true);
     }
   });
+  it("rechecks loudness after peak limiting instead of finishing below the target", () => {
+    const sr = 24000;
+    const speech = Float32Array.from({ length: sr * 4 }, (_, i) => {
+      const envelope = 0.18 + 0.22 * (0.5 + 0.5 * Math.sin((2 * Math.PI * 3 * i) / sr));
+      return envelope * Math.sin((2 * Math.PI * 220 * i) / sr);
+    });
+    const out = normalizeLoudness([speech], sr, -14);
+    expect(integratedLoudness(out, sr)).toBeCloseTo(-14, 1);
+    expect(out[0]?.every((v) => Math.abs(v) <= 10 ** (-1 / 20) + 1e-6)).toBe(true);
+  });
   it("gates silence out of integrated measurement", () => {
     const ch = sine(),
       padded = new Float32Array(ch.length * 2);
