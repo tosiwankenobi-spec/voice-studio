@@ -302,15 +302,16 @@ function Editor() {
   }
 
   return (
-    <div className="min-h-screen bg-background bg-glow font-sans">
+    <div className="min-h-screen bg-background font-sans">
       <SiteHeader />
-      <main className="mx-auto max-w-6xl px-6 pb-16">
-        <h1 className="font-display text-4xl font-bold md:text-5xl">
-          Edit audio <span className="text-primary">like a document.</span>
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Upload a recording, fix the words, and re-speak it.
-        </p>
+      <main className="mx-auto max-w-[1500px] px-6 pb-16 pt-6 lg:px-8">
+        <header className="border-b pb-6">
+          <p className="text-sm text-muted-foreground">Recording Editor · transcript-driven editing</p>
+          <h1 className="mt-1 font-display text-3xl font-bold md:text-4xl">
+            {original?.name ?? "Edit audio like a document"}
+          </h1>
+          <p className="mt-2 text-muted-foreground">Delete words to cut them. Type new ones to patch them in.</p>
+        </header>
         {!user && <AISignIn />}
 
         <input

@@ -1,394 +1,147 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { Download, Sparkles, Wand2, AudioLines, Loader2, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { ScriptGenerator } from "@/components/ScriptGenerator";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { ArrowRight, AudioLines, Clapperboard, Megaphone, Mic2, Play, Plus, ScanFace, Search, Users } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { AISignIn } from "@/components/AISignIn";
-import { useAuth } from "@/hooks/useAuth";
-import { saveClip, saveScript } from "@/lib/library";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { WaveMark } from "@/components/WaveMark";
 import { supabase } from "@/integrations/supabase/client";
-import { askClaude, generateSpeech, VOICES } from "@/lib/studio.functions";
-import { LineTakes } from "@/components/LineTakes";
-import { CostHint } from "@/components/CostHint";
-import { FREE_PREVIEW_CHARS } from "@/lib/costs";
-import { sentences } from "@/lib/take-delivery";
-import { taggedDownloadUrl } from "@/lib/ai-tag";
-import { download } from "@/lib/media-client";
-import { PronunciationHints } from "@/components/PronunciationHints";
+import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/")({
-  validateSearch: (s: Record<string, unknown>): { script?: string } =>
-    typeof s["script"] === "string" ? { script: s["script"] as string } : {},
   head: () => ({
     meta: [
-      { title: "Vocalis — AI Voice Studio" },
-      {
-        name: "description",
-        content: "Write with Claude, then turn scripts into natural AI voiceovers in seconds.",
-      },
-      { property: "og:title", content: "Vocalis — AI Voice Studio" },
-      {
-        property: "og:description",
-        content: "Write with Claude, then turn scripts into natural AI voiceovers.",
-      },
+      { title: "Home — Vocalis" },
+      { name: "description", content: "Create polished voiceovers, recordings and narrated videos from one studio." },
+      { property: "og:title", content: "Home — Vocalis" },
+      { property: "og:description", content: "Your AI audio and video creation workspace." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: Studio,
+  component: HomePage,
 });
 
+const STUDIOS = [
+  { to: "/voice", title: "Voice Studio", description: "Write or paste a script, pick a voice, refine line by line.", icon: AudioLines, color: "text-primary" },
+  { to: "/editor", title: "Recording Editor", description: "Edit audio by editing the transcript. Patch words in your own voice.", icon: Mic2, color: "text-accent" },
+  { to: "/ad", title: "Product Ad", description: "Paste a product link and get a captioned vertical ad.", icon: Megaphone, color: "text-primary" },
+  { to: "/dialogue", title: "Multi-voice", description: "Podcasts and dialogues with a different voice for every speaker.", icon: Users, color: "text-foreground" },
+  { to: "/video", title: "Video Studio", description: "Turn a script into narrated scenes with pictures and motion.", icon: Clapperboard, color: "text-foreground" },
+  { to: "/avatar", title: "Talking Avatar", description: "An animated presenter with speech-timed mouth shapes.", icon: ScanFace, color: "text-foreground" },
+] as const;
 const QUICK = [
-  "Polish for voiceover",
-  "Make it shorter",
-  "Make it more energetic",
-  "Write a 30-second podcast intro",
-];
-const STYLES = [
-  "",
-  "Say warmly",
-  "Say with excitement",
-  "Say calmly and slowly",
-  "Say like a news anchor",
-  "Whisper",
-];
+  { label: "Podcast intro", idea: "A warm thirty-second podcast intro for a small business show" },
+  { label: "Product ad from a link", idea: "", to: "/ad" },
+  { label: "Clean up a recording", idea: "", to: "/editor" },
+  { label: "Dub a video into French", idea: "", to: "/editor" },
+] as const;
 
-type Take = { id: string; url: string; voice: string; text: string };
+type Recent = { id: string; title: string; studio: string; date: string };
+async function loadRecent(): Promise<Recent[]> {
+  const [scripts, clips, media, ads] = await Promise.all([
+    supabase.from("scripts").select("id,title,updated_at").order("updated_at", { ascending: false }).limit(5),
+    supabase.from("clips").select("id,text,voice,created_at").order("created_at", { ascending: false }).limit(5),
+    supabase.from("media").select("id,prompt,kind,created_at").order("created_at", { ascending: false }).limit(5),
+    supabase.from("ad_projects").select("id,product,updated_at").order("updated_at", { ascending: false }).limit(5),
+  ]);
+  for (const result of [scripts, clips, media, ads]) if (result.error) throw result.error;
+  return [
+    ...(scripts.data ?? []).map((x) => ({ id: `s-${x.id}`, title: x.title, studio: "Voice Studio", date: x.updated_at })),
+    ...(clips.data ?? []).map((x) => ({ id: `c-${x.id}`, title: x.text.slice(0, 70) || "Voice clip", studio: x.voice, date: x.created_at })),
+    ...(media.data ?? []).map((x) => ({ id: `m-${x.id}`, title: x.prompt || `Saved ${x.kind}`, studio: x.kind === "video" ? "Video" : "Image", date: x.created_at })),
+    ...(ads.data ?? []).map((x) => ({ id: `a-${x.id}`, title: (x.product as { title?: string })?.title || "Product ad", studio: "Product Ad", date: x.updated_at })),
+  ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
+}
 
-function Studio() {
-  const speak = useServerFn(generateSpeech);
-  const claude = useServerFn(askClaude);
-  const [text, setText] = useState("");
-  const [voice, setVoice] = useState<string>("Kore");
-  const [style, setStyle] = useState("");
-  const [ask, setAsk] = useState("");
-  const [busy, setBusy] = useState<"voice" | "claude" | "preview" | null>(null);
-  const [takes, setTakes] = useState<Take[]>([]);
+function HomePage() {
   const { user } = useAuth();
-  const { script: scriptParam } = Route.useSearch();
-  const [scriptId, setScriptId] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
-  const loaded = useRef(false);
-  const saving = useRef<Promise<string> | null>(null);
-  const scriptIdRef = useRef<string | null>(null);
-  async function ensureScript() {
-    if (saving.current) return saving.current;
-    const promise = saveScript(text, scriptIdRef.current);
-    saving.current = promise;
-    try {
-      const id = await promise;
-      scriptIdRef.current = id;
-      setScriptId(id);
-      setSaveState("saved");
-      return id;
-    } finally {
-      saving.current = null;
-    }
-  }
-
-  // Open a saved script from the library
+  const navigate = useNavigate();
+  const [idea, setIdea] = useState("");
+  const [search, setSearch] = useState("");
+  const [today, setToday] = useState({ date: "", greeting: "Welcome" });
+  const recent = useQuery({ queryKey: ["home-recent"], queryFn: loadRecent, enabled: !!user });
   useEffect(() => {
-    if (!scriptParam || !user) return;
-    let cancelled = false;
-    supabase
-      .from("scripts")
-      .select("id, content")
-      .eq("id", scriptParam)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data && !cancelled) {
-          loaded.current = true;
-          setScriptId(data.id);
-          scriptIdRef.current = data.id;
-          setText(data.content);
-          setSaveState("saved");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [scriptParam, user]);
-
-  // Auto-save the script while signed in
-  useEffect(() => {
-    if (!user || !text.trim()) return;
-    if (loaded.current) {
-      loaded.current = false;
-      return;
-    }
-    setSaveState("saving");
-    const t = setTimeout(async () => {
-      try {
-        await ensureScript();
-        setSaveState("saved");
-      } catch {
-        setSaveState("idle");
-      }
-    }, 1200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, user]);
-
-  async function runClaude(instruction: string) {
-    if (!user) {
-      toast.error("Sign in to use AI tools.");
-      return;
-    }
-    setBusy("claude");
-    try {
-      const r = await claude({ data: { text, instruction } });
-      setText(r.text);
-      setAsk("");
-      toast.success("Claude updated your script");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Claude failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  const firstSentence = (sentences(text)[0] ?? "").slice(0, FREE_PREVIEW_CHARS);
-
-  async function runPreview() {
-    if (!user) {
-      toast.error("Sign in to preview voices.");
-      return;
-    }
-    setBusy("preview");
-    try {
-      const r = await speak({ data: { text: firstSentence, voice, style, preview: true } });
-      const url = `data:${r.mime};base64,${r.audio}`;
-      setTakes((t) => [
-        { id: crypto.randomUUID(), url, voice: `${voice} · free preview`, text: firstSentence },
-        ...t,
-      ]);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Preview failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function runVoice() {
-    if (!user) {
-      toast.error("Sign in to generate speech.");
-      return;
-    }
-    setBusy("voice");
-    try {
-      const r = await speak({ data: { text, voice, style } });
-      const url = `data:${r.mime};base64,${r.audio}`;
-      setTakes((t) => [{ id: crypto.randomUUID(), url, voice, text }, ...t]);
-      if (user) {
-        saveClip({ dataUrl: url, voice, text, scriptId })
-          .then(() => toast.success("Clip saved to your library"))
-          .catch((e) => toast.error(e instanceof Error ? e.message : "Couldn't save clip"));
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Generation failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
+    const now = new Date();
+    const hour = now.getHours();
+    setToday({
+      date: new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" }).format(now),
+      greeting: hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening",
+    });
+  }, []);
+  const name = user?.email?.split("@")[0] ?? "creator";
+  const create = () => navigate({ to: "/voice", search: idea.trim() ? { idea: idea.trim() } : {} });
+  const filteredStudios = STUDIOS.filter((s) => `${s.title} ${s.description}`.toLowerCase().includes(search.toLowerCase()));
+  const filteredRecent = (recent.data ?? []).filter((r) => `${r.title} ${r.studio}`.toLowerCase().includes(search.toLowerCase()));
   return (
-    <div className="min-h-screen bg-background bg-glow font-sans">
+    <div className="min-h-screen bg-background font-sans">
       <SiteHeader />
-
-      <main className="mx-auto grid max-w-6xl gap-6 px-6 pb-16 lg:grid-cols-[1fr_360px]">
-        <section className="rounded-2xl border bg-card p-6">
-          <h1 className="font-display text-4xl font-bold leading-tight md:text-5xl">
-            Your words, <span className="text-primary">beautifully voiced.</span>
-          </h1>
-          <Textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="Type or paste your script… or ask Claude to write one."
-            className="mt-6 min-h-[280px] resize-y border-0 bg-muted text-lg leading-relaxed"
-            maxLength={5000}
-          />
-          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-            <span>
-              {user ? (
-                saveState === "saving" ? (
-                  "Saving…"
-                ) : saveState === "saved" ? (
-                  "Saved to your library"
-                ) : (
-                  "Auto-saves as you type"
-                )
-              ) : (
-                <Link to="/auth" className="text-primary hover:underline">
-                  Sign in to save your work
-                </Link>
-              )}
-            </span>
-            <span>{text.length}/5000</span>
+      <main className="mx-auto max-w-[1440px] px-6 pb-16 pt-8 lg:px-10">
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p className="text-sm text-muted-foreground">{today.date || "Your creative workspace"}</p>
+            <h1 className="mt-1 font-display text-4xl font-extrabold tracking-tight md:text-5xl">{today.greeting}, <span className="capitalize">{name}</span></h1>
           </div>
-
-          {!user && <AISignIn />}
-          <PronunciationHints text={text} />
-          <ScriptGenerator onScript={setText} disabled={!!busy || !user} />
-
-          <div className="mt-4 rounded-xl border bg-secondary p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-              <Sparkles className="h-4 w-4 text-accent" /> Claude writing assistant
-            </div>
-            <div className="mb-3 flex flex-wrap gap-2">
-              {QUICK.map((q) => (
-                <Button
-                  key={q}
-                  size="sm"
-                  variant="outline"
-                  disabled={!!busy || !user}
-                  onClick={() => runClaude(q)}
-                >
-                  {q}
-                </Button>
-              ))}
-            </div>
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (ask.trim()) runClaude(ask);
-              }}
-            >
-              <Input
-                value={ask}
-                onChange={(e) => setAsk(e.target.value)}
-                placeholder="Ask Claude anything about your script…"
-              />
-              <Button type="submit" variant="secondary" disabled={!!busy || !ask.trim() || !user}>
-                {busy === "claude" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Wand2 className="h-4 w-4" />
-                )}
-              </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="relative block w-72 max-w-full">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search projects, voices, clips" className="pl-9" aria-label="Search projects, voices, clips" />
+            </label>
+            <Button asChild size="lg"><Link to="/voice"><Plus className="h-4 w-4" />New project</Link></Button>
+          </div>
+        </div>
+        <section className="relative mt-8 overflow-hidden rounded-2xl border bg-card p-6 md:p-8">
+          <div className="relative z-10 max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-widest text-primary">Start with an idea</p>
+            <h2 className="mt-3 font-display text-3xl font-bold md:text-4xl">What are we making today?</h2>
+            <p className="mt-3 text-muted-foreground">Start with an idea, then use Claude to draft your script and choose a voice.</p>
+            <form className="mt-6 flex flex-col gap-3 sm:flex-row" onSubmit={(e) => { e.preventDefault(); create(); }}>
+              <Input value={idea} onChange={(e) => setIdea(e.target.value)} placeholder="A thirty-second ad for our new soy candle, warm and calm" aria-label="Project idea" className="h-12 flex-1 bg-background" />
+              <Button size="lg" type="submit">Create</Button>
             </form>
-          </div>
-          <LineTakes
-            text={text}
-            scriptId={scriptId}
-            ensureScript={ensureScript}
-            voice={voice}
-            style={style}
-            signedIn={!!user}
-            disabled={!!busy}
-            onVoiceChange={setVoice}
-          />
-        </section>
-
-        <aside className="flex flex-col gap-6">
-          <div className="rounded-2xl border bg-card p-6">
-            <h2 className="font-display text-lg font-bold">Voice</h2>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {VOICES.map((v) => (
-                <Button
-                  key={v}
-                  variant={voice === v ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setVoice(v)}
-                >
-                  {v}
-                </Button>
-              ))}
-            </div>
-            <h2 className="mt-5 font-display text-lg font-bold">Delivery</h2>
-            <select
-              value={style}
-              onChange={(e) => setStyle(e.target.value)}
-              className="mt-3 w-full rounded-md border bg-muted px-3 py-2 text-sm"
-            >
-              {STYLES.map((s) => (
-                <option key={s} value={s}>
-                  {s || "Natural"}
-                </option>
-              ))}
-            </select>
-            <Button
-              className="mt-5 w-full shadow-glow"
-              size="lg"
-              disabled={!!busy || !text.trim() || !user}
-              onClick={runVoice}
-            >
-              {busy === "voice" ? (
-                <span className="flex items-end gap-0.5">
-                  {[0, 1, 2, 3].map((i) => (
-                    <span
-                      key={i}
-                      className="h-4 w-1 rounded bg-primary-foreground animate-wave"
-                      style={{ animationDelay: `${i * 0.12}s` }}
-                    />
-                  ))}
-                  <span className="ml-2">Generating…</span>
-                </span>
+            <div className="mt-5 flex flex-wrap gap-2">
+              {QUICK.map((q) => "to" in q ? (
+                <Button key={q.label} asChild variant="outline" size="sm" className="rounded-full"><Link to={q.to}>{q.label}</Link></Button>
               ) : (
-                <>
-                  <AudioLines className="h-4 w-4" /> Generate voice
-                </>
-              )}
-            </Button>
-            <div className="mt-2 flex items-center justify-between">
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto px-0"
-                disabled={!!busy || !firstSentence || !user}
-                onClick={runPreview}
-              >
-                {busy === "preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Preview first sentence (free)
-              </Button>
-              <CostHint kind="tts" units={text.length} />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border bg-card p-6">
-            <h2 className="font-display text-lg font-bold">Takes</h2>
-            {takes.length === 0 && (
-              <p className="mt-2 text-sm text-muted-foreground">Generated audio appears here.</p>
-            )}
-            <div className="mt-3 flex flex-col gap-4">
-              {takes.map((t, i) => (
-                <div key={t.id} className="rounded-xl bg-muted p-3">
-                  <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                    <span>
-                      Take {takes.length - i} · {t.voice}
-                    </span>
-                    <div className="flex gap-1">
-                      <button
-                        aria-label="Download"
-                        onClick={async () =>
-                          download(
-                            await taggedDownloadUrl(t.url),
-                            `vocalis-take-${takes.length - i}.wav`,
-                          )
-                        }
-                      >
-                        <Download className="h-4 w-4 hover:text-primary" />
-                      </button>
-                      <button
-                        aria-label="Delete"
-                        onClick={() => setTakes((x) => x.filter((y) => y.id !== t.id))}
-                      >
-                        <Trash2 className="h-4 w-4 hover:text-destructive" />
-                      </button>
-                    </div>
-                  </div>
-                  <audio controls src={t.url} className="w-full" />
-                  <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{t.text}</p>
-                </div>
+                <Button key={q.label} variant="outline" size="sm" className="rounded-full" onClick={() => navigate({ to: "/voice", search: { idea: q.idea } })}>{q.label}</Button>
               ))}
             </div>
           </div>
-        </aside>
+          <WaveMark className="absolute -right-4 bottom-4 hidden h-56 text-primary/50 xl:flex" bars={24} />
+        </section>
+        {!user && <AISignIn />}
+        <section className="mt-10">
+          <div className="flex items-end justify-between gap-4">
+            <h2 className="font-display text-2xl font-bold">Studios</h2>
+            <p className="hidden text-sm text-muted-foreground md:block">Every tool shows its credit cost before you generate</p>
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {filteredStudios.map(({ to, title, description, icon: Icon, color }) => (
+              <Link key={to} to={to} className="group rounded-2xl border bg-card p-4 transition-colors hover:border-primary">
+                <div className="flex h-24 items-center justify-center rounded-xl bg-secondary px-4"><WaveMark className={`h-16 ${color}`} bars={18} /></div>
+                <div className="mt-4 flex items-center gap-2"><Icon className={`h-4 w-4 ${color}`} /><h3 className="font-display text-lg font-bold">{title}</h3></div>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+        <section className="mt-10">
+          <div className="flex items-center justify-between"><h2 className="font-display text-2xl font-bold">Recent work</h2><Link to="/library" className="flex items-center gap-1 text-sm font-semibold text-primary">Open library<ArrowRight className="h-4 w-4" /></Link></div>
+          <div className="mt-4 overflow-hidden rounded-2xl border bg-card">
+            {user && filteredRecent.map((item) => (
+              <Link to="/library" key={item.id} className="flex items-center gap-4 border-b p-4 last:border-0 hover:bg-secondary">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-primary"><Play className="ml-0.5 h-4 w-4 fill-current" /></span>
+                <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{item.title}</span><span className="text-sm text-muted-foreground">{item.studio} · {new Date(item.date).toLocaleDateString()}</span></span>
+                <WaveMark className="hidden h-8 text-muted-foreground md:flex" bars={18} />
+              </Link>
+            ))}
+            {(!user || recent.isLoading || filteredRecent.length === 0) && (
+              <div className="p-6 text-sm text-muted-foreground">{!user ? "Sign in to see your saved work here." : recent.isLoading ? "Loading your recent work…" : search ? "No work matches your search." : "Your next finished project will appear here."}</div>
+            )}
+          </div>
+        </section>
       </main>
     </div>
   );

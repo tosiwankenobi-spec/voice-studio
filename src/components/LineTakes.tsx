@@ -207,7 +207,7 @@ export function LineTakes({
     }
   }
   return (
-    <section className="mt-6 border-t pt-6" aria-label="Line takes">
+    <section className="mt-5" aria-label="Line takes">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display text-xl font-bold">Lines & takes</h2>
         {!!voices.data?.length && (
@@ -228,15 +228,15 @@ export function LineTakes({
         )}
       </div>
       {lines.length === 0 && <p className="mt-3 text-sm text-muted-foreground">No lines yet.</p>}
-      <div className="mt-3 divide-y">
+      <div className="mt-3 space-y-3">
         {lines.map((line, i) => {
           const delivery = settings[lineKey(i, line)] ?? DEFAULT_DELIVERY;
           const list = forLine(i, line);
           const locked = disabled || busy !== null || !signedIn;
           return (
-            <article key={lineKey(i, line)} className="py-4" aria-label={`Line ${i + 1}`}>
+            <article key={lineKey(i, line)} className="rounded-2xl border bg-card p-5" aria-label={`Line ${i + 1}`}>
               <div className="flex items-start gap-3">
-                <span className="mt-1 w-5 shrink-0 text-sm text-muted-foreground">{i + 1}</span>
+                <span className="mt-1 w-6 shrink-0 font-mono text-sm text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
                 <p className="min-w-0 flex-1 break-words leading-relaxed">{line}</p>
                 <span className="shrink-0 text-xs text-muted-foreground">{list.length}/3</span>
               </div>

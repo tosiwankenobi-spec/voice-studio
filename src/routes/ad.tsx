@@ -448,40 +448,23 @@ function ProductAd() {
   const renderScenes = scenes.map((s) => ({ seconds: s.seconds ?? 0, text: s.narration }));
 
   return (
-    <div className="min-h-screen bg-background bg-glow font-sans">
+    <div className="min-h-screen bg-background font-sans">
       <SiteHeader />
-      <main className="mx-auto max-w-6xl px-6 pb-16">
-        <h1 className="font-display text-4xl font-bold">
-          Product link <span className="text-primary">→ video ad</span>
-        </h1>
-        <p className="mt-2 text-muted-foreground">
-          Paste a Shopify or Etsy product link. Claude writes the ad, Vocalis voices it and builds a
-          captioned vertical video.
-        </p>
+      <main className="mx-auto max-w-[1500px] px-6 pb-16 pt-6 lg:px-8">
+        <header className="flex flex-wrap items-center justify-between gap-5 border-b pb-6">
+          <div>
+            <p className="text-sm text-muted-foreground">Product Ad · {settings.seconds} seconds · 9:16</p>
+            <h1 className="mt-1 font-display text-3xl font-bold md:text-4xl">{product.title || "Product link to video ad"}</h1>
+          </div>
+          <form className="flex min-w-72 flex-1 gap-2 sm:max-w-2xl" onSubmit={(e) => { e.preventDefault(); void readLink(); }}>
+            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://yourstore.com/products/…" aria-label="Product link" />
+            <Button type="submit" disabled={!url.trim() || !user || !!busy}>
+              {busy === "read" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+              Read product
+            </Button>
+          </form>
+        </header>
         {!user && <AISignIn />}
-
-        <form
-          className="mt-6 flex flex-col gap-2 rounded-2xl border bg-card p-5 sm:flex-row"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void readLink();
-          }}
-        >
-          <Input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://yourstore.com/products/…"
-            aria-label="Product link"
-          />
-          <Button type="submit" disabled={!url.trim() || !user || !!busy}>
-            {busy === "read" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Link2 className="h-4 w-4" />
-            )}
-            Read product
-          </Button>
-        </form>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_340px]">
           <section className="space-y-3 rounded-2xl border bg-card p-5">

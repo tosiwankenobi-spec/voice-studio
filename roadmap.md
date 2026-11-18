@@ -1,10 +1,13 @@
+- [x] Apply the uploaded violet/cyan redesign: left navigation, Home dashboard, Voice Studio, Recording Editor and Product Ad.
+
+Redesign verification: all four screens checked signed-out at desktop and mobile sizes with no overflow or browser errors; signed-in Home showed recent work and monthly usage, idea creation populated Voice Studio, speech saved to My Library, and WAV export downloaded successfully. All 148 regression tests passed; TypeScript and the preview build passed.
 - [x] Require authenticated access on all AI spending endpoints and show sign-in prompts.
 - [x] Replace energy-only talking-avatar motion with phoneme/viseme lip-sync, preview and video export.
 
 Talking-face verification: generated narration produced 21 timed mouth shapes for six words; preview visibly cycled through wide, open, closed, tongue-up, round, sibilant and tongue shapes, and the downloaded MP4 contained the animation and audio. Uploaded narration produced 117 mouth shapes from 31 timed words. Preview/export share the same binary-searched viseme timeline, with closed lips during silence and 35ms coarticulation blends. All 148 tests pass; TypeScript and the preview build are clean.
-- [ ] Add browser-only pause/filler cleanup, noise reduction, loudness presets, A/B preview and undo.
-- [ ] Add private pronunciation dictionary, server-side TTS replacement and script suggestions.
-- [ ] Verify new workflows and run regression tests.
+- [x] Add browser-only pause/filler cleanup, noise reduction, loudness presets, A/B preview and undo.
+- [x] Add private pronunciation dictionary, server-side TTS replacement and script suggestions.
+- [x] Verify new workflows and run regression tests.
 - [x] Require voice-copying consent and save clones durably, cleaning up failed saves.
 - [x] Match Recording Editor download extensions to audio format.
 - [x] Run security regression tests (26 passed) and verify signed-out blocking, consent controls, authenticated images, stock re-speaking and saved clip readback.

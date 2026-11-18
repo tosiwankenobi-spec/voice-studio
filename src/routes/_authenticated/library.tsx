@@ -98,7 +98,7 @@ function Library() {
                       </div>
                       <div className="flex gap-1">
                         <Button asChild size="icon" variant="ghost" aria-label="Open in studio">
-                          <Link to="/" search={{ script: s.id }}>
+                          <Link to="/voice" search={{ script: s.id }}>
                             <Pencil className="h-4 w-4" />
                           </Link>
                         </Button>

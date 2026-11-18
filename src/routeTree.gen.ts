@@ -19,6 +19,7 @@ import { Route as EditorRouteImport } from './routes/editor'
 import { Route as ImagesRouteImport } from './routes/images'
 import { Route as ResponsibleUseRouteImport } from './routes/responsible-use'
 import { Route as VideoRouteImport } from './routes/video'
+import { Route as VoiceRouteImport } from './routes/voice'
 import { Route as AuthenticatedBrandRouteImport } from './routes/_authenticated/brand'
 import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated/library'
 import { Route as AuthenticatedPronunciationsRouteImport } from './routes/_authenticated/pronunciations'
@@ -75,6 +76,11 @@ const VideoRoute = VideoRouteImport.update({
   path: '/video',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VoiceRoute = VoiceRouteImport.update({
+  id: '/voice',
+  path: '/voice',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedBrandRoute = AuthenticatedBrandRouteImport.update({
   id: '/brand',
   path: '/brand',
@@ -117,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/images': typeof ImagesRoute
   '/responsible-use': typeof ResponsibleUseRoute
   '/video': typeof VideoRoute
+  '/voice': typeof VoiceRoute
   '/brand': typeof AuthenticatedBrandRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/pronunciations': typeof AuthenticatedPronunciationsRoute
@@ -134,6 +141,7 @@ export interface FileRoutesByTo {
   '/images': typeof ImagesRoute
   '/responsible-use': typeof ResponsibleUseRoute
   '/video': typeof VideoRoute
+  '/voice': typeof VoiceRoute
   '/brand': typeof AuthenticatedBrandRoute
   '/library': typeof AuthenticatedLibraryRoute
   '/pronunciations': typeof AuthenticatedPronunciationsRoute
@@ -153,6 +161,7 @@ export interface FileRoutesById {
   '/images': typeof ImagesRoute
   '/responsible-use': typeof ResponsibleUseRoute
   '/video': typeof VideoRoute
+  '/voice': typeof VoiceRoute
   '/_authenticated/brand': typeof AuthenticatedBrandRoute
   '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/_authenticated/pronunciations': typeof AuthenticatedPronunciationsRoute
@@ -172,6 +181,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/responsible-use'
     | '/video'
+    | '/voice'
     | '/brand'
     | '/library'
     | '/pronunciations'
@@ -189,6 +199,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/responsible-use'
     | '/video'
+    | '/voice'
     | '/brand'
     | '/library'
     | '/pronunciations'
@@ -207,6 +218,7 @@ export interface FileRouteTypes {
     | '/images'
     | '/responsible-use'
     | '/video'
+    | '/voice'
     | '/_authenticated/brand'
     | '/_authenticated/library'
     | '/_authenticated/pronunciations'
@@ -226,6 +238,7 @@ export interface RootRouteChildren {
   ImagesRoute: typeof ImagesRoute
   ResponsibleUseRoute: typeof ResponsibleUseRoute
   VideoRoute: typeof VideoRoute
+  VoiceRoute: typeof VoiceRoute
   ApiGenerateImageRoute: typeof ApiGenerateImageRoute
 }
 
@@ -299,6 +312,13 @@ declare module '@tanstack/react-router' {
       path: '/video'
       fullPath: '/video'
       preLoaderRoute: typeof VideoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/voice': {
+      id: '/voice'
+      path: '/voice'
+      fullPath: '/voice'
+      preLoaderRoute: typeof VoiceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/brand': {
@@ -376,6 +396,7 @@ const rootRouteChildren: RootRouteChildren = {
   ImagesRoute: ImagesRoute,
   ResponsibleUseRoute: ResponsibleUseRoute,
   VideoRoute: VideoRoute,
+  VoiceRoute: VoiceRoute,
   ApiGenerateImageRoute: ApiGenerateImageRoute,
 }
 export const routeTree = rootRouteImport
